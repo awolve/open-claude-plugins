@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.7 — 2026-05-28
+
+**Fix: `find_project_root()` now works from inside symlinked trees.**
+
+`config.find_project_root()` previously started from `os.getcwd()`, which on macOS returns the symlink-resolved path. When cwd was inside a symlinked tree like Cortex's `awolve-context/` (which points into SharePoint), walking up never crossed back into the actual repo where `.claude/specs.md` lives — so `read_config()` returned `None` and every `specs-cli.py` invocation failed silently with `'NoneType' object has no attribute 'get'`.
+
+Patch tries `$PWD` (shell-tracked, preserves symlinks) before falling back to `os.getcwd()`. Both starts are walked, so behavior is unchanged when `$PWD` is unset, missing, or already resolved.
+
 ## 0.16.6 — 2026-05-16
 
 **Fix (specs-plugin bug #2, Option 2): skip push + writeback when body content hasn't changed.**

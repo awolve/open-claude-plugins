@@ -21,17 +21,33 @@ DEFAULT_SERVICE_URL = "https://specs.awolve.ai"
 
 
 def find_project_root():
-    """Walk up from cwd to find a directory containing .claude/specs.md or .claude/specs.local.md"""
-    d = os.getcwd()
-    while True:
-        for name in ("specs.local.md", "specs.md"):
-            candidate = os.path.join(d, ".claude", name)
-            if os.path.isfile(candidate):
-                return d
-        parent = os.path.dirname(d)
-        if parent == d:
-            return None
-        d = parent
+    """Walk up to find a directory containing .claude/specs.md or .claude/specs.local.md.
+
+    Tries $PWD first (shell-tracked, preserves symlinks on macOS) before
+    falling back to os.getcwd() (resolves symlinks). This matters when cwd
+    is inside a symlinked tree like awolve-context/ — getcwd() resolves into
+    SharePoint and walking up never crosses back into the repo.
+    """
+    starts = []
+    pwd = os.environ.get("PWD")
+    if pwd and os.path.isdir(pwd):
+        starts.append(pwd)
+    cwd = os.getcwd()
+    if cwd not in starts:
+        starts.append(cwd)
+
+    for start in starts:
+        d = start
+        while True:
+            for name in ("specs.local.md", "specs.md"):
+                candidate = os.path.join(d, ".claude", name)
+                if os.path.isfile(candidate):
+                    return d
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    return None
 
 
 def _expand_path(path_str, project_root):
