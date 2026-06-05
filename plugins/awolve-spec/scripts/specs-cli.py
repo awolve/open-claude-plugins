@@ -36,14 +36,26 @@ Usage:
                                        — List all documents in a feature
     specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY]
                                        — List backlog items (default: tree view, grouped by epic)
+    specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]
+                                       — Show full details of a single backlog item (description, parent, etc.)
     specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>]
                                        — Create a backlog item; optional --parent makes it a child of an epic
     specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>
                                        — Reparent a backlog item (or pass 'none' to clear the parent)
-    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S]
+    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false]
                                        — Update fields on an existing backlog item
     specs-cli.py backlog-delete <project-id> <item-id-or-#N>
                                        — Soft-delete a backlog item (cascades to children)
+    specs-cli.py backlog-comments <project-id> <item-id-or-#N> [--json]
+                                       — List comments on a backlog item
+    specs-cli.py backlog-comment <project-id> <item-id-or-#N> <body>
+                                       — Add a comment to a backlog item
+    specs-cli.py delete-backlog-comment <project-id> <item-id-or-#N> <comment-id>
+                                       — Delete a backlog comment (author or internal user)
+    specs-cli.py promote-backlog <project-id> <item-id-or-#N>
+                                       — Promote a backlog item to a feature (creates spec.md quick-spec)
+    specs-cli.py restore-backlog <project-id> <item-uuid>
+                                       — Restore a soft-deleted backlog item (internal users only)
     specs-cli.py bugs <project-id>     — List bugs for a project
     specs-cli.py bug <project-id> <title> <description> [severity] — Create a bug
     specs-cli.py view-bug <project-id> <bug-number> [--json]
@@ -60,6 +72,8 @@ Usage:
                                        — Edit a bug comment (author or internal user). Audited.
     specs-cli.py delete-bug-comment <project-id> <bug-number> <comment-id>
                                        — Delete a bug comment (author or internal user). Hard delete, audited.
+    specs-cli.py delete-bug <project-id> <bug-number>
+                                       — Soft-delete a bug (internal users only)
     specs-cli.py comments <file-path>  — List comments on a spec document
     specs-cli.py comment <file-path> <body> [--inline --anchor <text>]
                                        — Add a comment to a spec document
@@ -79,6 +93,16 @@ Usage:
     specs-cli.py attach <file-path> [<project-id>/<feature-name>]
                                        — Upload a binary file as an attachment to a feature
                                          (if no feature id given, inferred from file path)
+    specs-cli.py attach <file-path> --bug <project-id> <bug-#N>
+                                       — Attach a file to an existing bug (post-creation)
+    specs-cli.py attach <file-path> --backlog <project-id> <backlog-#N>
+                                       — Attach a file to a backlog item
+    specs-cli.py list-attachments <feature|bug|backlog> <entity-uuid> [--json]
+                                       — List attachments on an entity
+    specs-cli.py download-attachment <attachment-id> <out-path>
+                                       — Download an attachment by id (out_path may be a dir or file)
+    specs-cli.py delete-attachment <attachment-id>
+                                       — Delete an attachment by id
     specs-cli.py --help                — Show this help
 """
 
@@ -2415,6 +2439,279 @@ def _resolve_backlog_id(headers, service_url, project_id, ref):
     return (None, None)
 
 
+def _fetch_backlog_detail(headers, service_url, project_id, ref):
+    """Fetch a full backlog item (with parent/children/comments) by ref.
+
+    Uses the `by-number` endpoint which returns the richer payload; falls
+    back to the list+filter path for UUID refs. Returns (item_dict, error_str)
+    where item_dict is None on miss.
+    """
+    s = str(ref).lstrip("#").strip()
+    # UUID path: list lookup (no single-item-by-uuid portal route)
+    if "-" in s and len(s) >= 32:
+        _id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+        return (item, None) if item else (None, f"backlog item '{ref}' not found")
+    try:
+        n = int(s)
+    except ValueError:
+        return (None, f"invalid backlog reference '{ref}'")
+    url = f"{service_url}/api/portal/projects/{project_id}/backlog/by-number/{n}"
+    sc, body = api_request(url, headers=headers)
+    if sc == 404:
+        return (None, f"backlog item #{n} not found in '{project_id}'")
+    if sc != 200:
+        return (None, f"fetch failed (HTTP {sc})")
+    return (json.loads(body), None)
+
+
+def view_backlog(project_id, ref, as_json=False):
+    """Show full details for a single backlog item by uuid, '#N', or 'N'.
+
+    The listing view (`backlog`) intentionally elides description and
+    metadata to stay scannable. Anyone implementing an item needs the
+    full description — that's what this command surfaces, along with
+    parent, children (for epics), and comments.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+
+    service_url = cfg["service_url"]
+    projects = [p for p in cfg["projects"] if p["id"] == project_id]
+    if not projects:
+        print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+        sys.exit(1)
+
+    item, err = _fetch_backlog_detail(headers, service_url, project_id, ref)
+    if not item:
+        print(f"specs: {err}", file=sys.stderr)
+        sys.exit(1)
+
+    if as_json:
+        print(json.dumps(item, indent=2, ensure_ascii=False))
+        return
+
+    number = item.get("number")
+    title = item.get("title", "untitled")
+    status = item.get("status", "?")
+    priority = item.get("priority", "?")
+    pri_marker = {"high": "!!!", "medium": "!!", "low": "!"}.get(priority, "?")
+    is_epic = item.get("isEpic", False)
+    epic_tag = "[EPIC] " if is_epic else ""
+    description = item.get("description") or "(no description)"
+    feature_id = item.get("featureId")
+    feature_title = item.get("featureTitle")
+    feature_status = item.get("featureStatus")
+    parent = item.get("parent")
+    children = item.get("children") or []
+    comments = item.get("comments") or []
+    created_by = item.get("createdByName") or item.get("createdByEmail") or item.get("createdBy", "?")
+    created = item.get("createdAt", "?")
+    updated = item.get("updatedAt", "?")
+
+    num_str = f"#{number} " if number else ""
+    print(f"{num_str}[{pri_marker} {priority}] {epic_tag}{title}")
+    print(f"  status:    {status}")
+    print(f"  author:    {created_by}")
+    if feature_id:
+        ft = f" — {feature_title}" if feature_title else ""
+        fs = f" [{feature_status}]" if feature_status else ""
+        print(f"  promoted:  feature → {feature_id}{ft}{fs}")
+    if parent:
+        p_num = parent.get("number")
+        p_label = f"#{p_num} {parent.get('title', '')}".strip()
+        print(f"  parent:    {p_label}")
+    if children:
+        order = ["idea", "planned", "in_progress", "completed", "archived"]
+        cstat = {s: 0 for s in order}
+        for c in children:
+            s = c.get("status")
+            if s in cstat:
+                cstat[s] += 1
+        parts = [f"{cstat[s]} {s}" for s in order if cstat[s]]
+        if parts:
+            print(f"  children:  {' · '.join(parts)}")
+    print(f"  created:   {created}")
+    if updated != created:
+        print(f"  updated:   {updated}")
+    print(f"  portal:    {service_url}/portal/{project_id}/backlog/{item.get('id', '')}")
+    print()
+    print("Description:")
+    print(description)
+
+    if children:
+        print()
+        print(f"Children ({len(children)}):")
+        for c in children:
+            cn = c.get("number")
+            cpri = {"high": "!!!", "medium": "!!", "low": "!"}.get(c.get("priority", ""), "?")
+            print(f"  [{cpri}] #{cn} {c.get('title', 'untitled')}  ({c.get('status', '?')})")
+
+    if comments:
+        print()
+        print(f"Comments ({len(comments)}):")
+        for c in comments:
+            author = c.get("author") or c.get("authorType", "anonymous")
+            print(f"  · {author} — {c.get('createdAt', '?')}  [id: {c.get('id', '')}]")
+            body = (c.get("body") or "").strip()
+            for line in body.splitlines() or [""]:
+                print(f"      {line}")
+
+
+def add_backlog_comment(project_id, ref, body_text):
+    """Add a comment to a backlog item."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/backlog/{item_id}/comments"
+    payload = json.dumps({"body": body_text}).encode("utf-8")
+    sc, body = api_request(url, method="POST", headers=headers, data=payload)
+    if sc not in (200, 201):
+        print(f"specs: comment failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    resp = json.loads(body) if body else {}
+    print(f"specs: comment added to #{item.get('number')} — id {resp.get('id', '?')}")
+
+
+def list_backlog_comments(project_id, ref, as_json=False):
+    """List comments on a backlog item. Uses the by-number endpoint which
+    already returns embedded comments — saves a round trip."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item, err = _fetch_backlog_detail(headers, service_url, project_id, ref)
+    if not item:
+        print(f"specs: {err}", file=sys.stderr)
+        sys.exit(1)
+
+    comments = item.get("comments") or []
+    if as_json:
+        print(json.dumps(comments, indent=2, ensure_ascii=False))
+        return
+
+    if not comments:
+        print(f"specs: no comments on backlog #{item.get('number')}")
+        return
+    print(f"specs: {len(comments)} comment(s) on backlog #{item.get('number')}")
+    print()
+    for c in comments:
+        author = c.get("author") or c.get("authorType", "anonymous")
+        print(f"· {author} — {c.get('createdAt', '?')}  [id: {c.get('id', '')}]")
+        body = (c.get("body") or "").strip()
+        for line in body.splitlines() or [""]:
+            print(f"    {line}")
+        print()
+
+
+def delete_backlog_comment(project_id, ref, comment_id):
+    """Delete a comment from a backlog item."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/backlog/{item_id}/comments/{comment_id}"
+    sc, body = api_request(url, method="DELETE", headers=headers)
+    if sc not in (200, 204):
+        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    print(f"specs: deleted comment {comment_id} from backlog #{item.get('number')}")
+
+
+def promote_backlog(project_id, ref):
+    """Promote a backlog item to a feature (creates feature + quick-spec doc)."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    if item.get("featureId"):
+        print(f"specs: backlog #{item.get('number')} is already promoted to feature {item['featureId']}", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/backlog/{item_id}/promote"
+    sc, body = api_request(url, method="POST", headers=headers, data=b"")
+    if sc not in (200, 201):
+        print(f"specs: promote failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    resp = json.loads(body) if body else {}
+    feature_name = resp.get("featureName") or resp.get("featureId", "?")
+    print(f"specs: promoted backlog #{item.get('number')} → feature {feature_name}")
+    print(f"  feature id:  {resp.get('featureId', '?')}")
+    print(f"  document id: {resp.get('documentId', '?')}")
+    print("  next: run '/awolve-spec:pull' to materialize the spec.md file locally")
+
+
+def restore_backlog(project_id, ref):
+    """Restore a soft-deleted backlog item (internal users only)."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, _item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}' (deleted items aren't in the active list — pass the uuid)", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/backlog/{item_id}/restore"
+    sc, body = api_request(url, method="POST", headers=headers, data=b"")
+    if sc not in (200, 201):
+        print(f"specs: restore failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    resp = json.loads(body) if body else {}
+    print(f"specs: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
+
+
 def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False):
     """Create a new backlog item. `parent` may be a uuid or a numeric #N reference.
     `is_epic=True` marks this item as an epic (can have children, can't have a parent)."""
@@ -2541,14 +2838,14 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
 
 
 def update_backlog_item(project_id, item_ref, fields):
-    """Update title/description/priority/status on an existing backlog item.
+    """Update title/description/priority/status/isEpic on an existing backlog item.
 
     `fields` is a dict of {api_key: value} to PATCH. Caller is responsible for
-    only passing keys the server understands. parentId/isEpic changes go via
-    set_backlog_parent for clearer error reporting.
+    only passing keys the server understands. parentId changes go via
+    set_backlog_parent for clearer error reporting; isEpic flips through here.
     """
     if not fields:
-        print("specs: nothing to update — pass at least one of --title/--description/--priority/--status", file=sys.stderr)
+        print("specs: nothing to update — pass at least one of --title/--description/--priority/--status/--epic", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -3515,6 +3812,273 @@ def attach_file(file_path, feature_identifier=None):
 
 
 # ---------------------------------------------------------------------------
+# Attachments (generic — features, bugs, backlog items)
+# ---------------------------------------------------------------------------
+
+def _upload_attachment(headers, service_url, entity_type, entity_id, file_path, replace_dup=True):
+    """Shared multipart POST to /api/portal/attachments. Replaces a same-named
+    attachment on the entity first so we don't accumulate duplicates (bug #8)."""
+    if not os.path.isfile(file_path):
+        print(f"specs: file not found: {file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    upload_filename = os.path.basename(file_path)
+    if replace_dup:
+        try:
+            list_url = (
+                f"{service_url}/api/portal/attachments"
+                f"?entityType={urllib.parse.quote(entity_type)}"
+                f"&entityId={urllib.parse.quote(entity_id, safe='')}"
+            )
+            sc, body = api_request(list_url, headers=headers)
+            if sc == 200:
+                existing = json.loads(body) if isinstance(body, str) else body
+                for att in existing:
+                    if att.get("filename") == upload_filename:
+                        del_sc, _ = api_request(
+                            f"{service_url}/api/portal/attachments/{att['id']}",
+                            method="DELETE", headers=headers,
+                        )
+                        if del_sc in (200, 204):
+                            print(f"specs: replaced existing attachment '{upload_filename}'")
+                        break
+        except Exception:
+            pass
+
+    content_type, body_bytes = _build_multipart(entity_type, entity_id, file_path)
+    upload_url = f"{service_url}/api/portal/attachments"
+    upload_headers = dict(headers)
+    upload_headers["Content-Type"] = content_type
+    upload_headers["Content-Length"] = str(len(body_bytes))
+
+    req = urllib.request.Request(upload_url, data=body_bytes, headers=upload_headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            resp_body = resp.read().decode("utf-8")
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        msg = ""
+        try:
+            msg = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        print(f"specs: upload failed (HTTP {e.code}): {msg}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"specs: upload failed — {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    if status not in (200, 201):
+        print(f"specs: upload failed (HTTP {status}): {resp_body[:200]}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        return json.loads(resp_body)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _resolve_bug_id(headers, service_url, project_id, ref):
+    """Resolve a bug ref (#N or numeric) to its uuid id, returning (id, item)."""
+    s = str(ref).lstrip("#").strip()
+    if "-" in s and len(s) >= 32:
+        # uuid path — fetch detail directly
+        sc, body = api_request(f"{service_url}/api/portal/bugs/{s}", headers=headers)
+        if sc != 200:
+            return (None, None)
+        return (s, json.loads(body))
+    try:
+        n = int(s)
+    except ValueError:
+        return (None, None)
+    url = f"{service_url}/api/portal/projects/{project_id}/bugs"
+    sc, body = api_request(url, headers=headers)
+    if sc != 200:
+        return (None, None)
+    for b in json.loads(body):
+        if b.get("number") == n:
+            return (b.get("id"), b)
+    return (None, None)
+
+
+def attach_to_bug(project_id, bug_ref, file_path):
+    """Upload a file as an attachment on a bug. Mirrors attach_file but
+    targets an existing bug — bug-creation already supports --attach for
+    initial screenshots; this command lets you add more after the fact."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    bug_id, bug = _resolve_bug_id(headers, service_url, project_id, bug_ref)
+    if not bug_id:
+        print(f"specs: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    att = _upload_attachment(headers, service_url, "bug", bug_id, file_path)
+    print(f"specs: uploaded '{os.path.basename(file_path)}' to bug #{bug.get('number')}")
+    if att.get("id"):
+        print(f"  id: {att['id']}")
+        print(f"  size: {att.get('sizeBytes', '?')} bytes")
+
+
+def attach_to_backlog(project_id, backlog_ref, file_path):
+    """Upload a file as an attachment on a backlog item."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, backlog_ref)
+    if not item_id:
+        print(f"specs: backlog '{backlog_ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    att = _upload_attachment(headers, service_url, "backlog", item_id, file_path)
+    print(f"specs: uploaded '{os.path.basename(file_path)}' to backlog #{item.get('number')}")
+    if att.get("id"):
+        print(f"  id: {att['id']}")
+        print(f"  size: {att.get('sizeBytes', '?')} bytes")
+
+
+def list_attachments(entity_type, entity_id, as_json=False):
+    """List attachments on a feature/bug/backlog entity (by uuid)."""
+    if entity_type not in ("feature", "bug", "backlog"):
+        print(f"specs: invalid entity-type '{entity_type}' (use feature|bug|backlog)", file=sys.stderr)
+        sys.exit(1)
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    url = (
+        f"{service_url}/api/portal/attachments"
+        f"?entityType={urllib.parse.quote(entity_type)}"
+        f"&entityId={urllib.parse.quote(entity_id, safe='')}"
+    )
+    sc, body = api_request(url, headers=headers)
+    if sc != 200:
+        print(f"specs: list failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    atts = json.loads(body)
+    if as_json:
+        print(json.dumps(atts, indent=2, ensure_ascii=False))
+        return
+    if not atts:
+        print(f"specs: no attachments on {entity_type} {entity_id}")
+        return
+    print(f"specs: {len(atts)} attachment(s) on {entity_type} {entity_id}")
+    for a in atts:
+        size = a.get("sizeBytes", "?")
+        print(f"  · {a.get('filename', '?')}  ({size} bytes, {a.get('contentType', '?')})")
+        print(f"      id: {a.get('id', '?')}  uploaded: {a.get('uploadedAt', '?')} by {a.get('uploadedBy', '?')}")
+
+
+def download_attachment(attachment_id, out_path):
+    """Download an attachment's binary content by id. Writes to out_path
+    (a directory uses the server-provided filename; a file path is taken
+    literally)."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    url = f"{service_url}/api/portal/attachments/{attachment_id}"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = resp.read()
+            # Pull filename from Content-Disposition if present
+            disp = resp.headers.get("Content-Disposition", "")
+            server_name = None
+            if "filename=" in disp:
+                server_name = disp.split("filename=", 1)[1].strip().strip('"').split(";")[0]
+    except urllib.error.HTTPError as e:
+        msg = ""
+        try:
+            msg = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        print(f"specs: download failed (HTTP {e.code}): {msg}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"specs: download failed — {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    target = out_path
+    if os.path.isdir(out_path):
+        if not server_name:
+            print(f"specs: out_path '{out_path}' is a directory but server didn't return a filename — pass a full file path", file=sys.stderr)
+            sys.exit(1)
+        target = os.path.join(out_path, server_name)
+    with open(target, "wb") as f:
+        f.write(data)
+    print(f"specs: wrote {len(data)} bytes → {target}")
+
+
+def delete_attachment(attachment_id):
+    """Delete an attachment by id."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    url = f"{service_url}/api/portal/attachments/{attachment_id}"
+    sc, body = api_request(url, method="DELETE", headers=headers)
+    if sc not in (200, 204):
+        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    print(f"specs: deleted attachment {attachment_id}")
+
+
+def delete_bug(project_id, bug_ref):
+    """Soft-delete a bug (internal users only). Mirrors backlog-delete."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    bug_id, bug = _resolve_bug_id(headers, service_url, project_id, bug_ref)
+    if not bug_id:
+        print(f"specs: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/bugs/{bug_id}"
+    sc, body = api_request(url, method="DELETE", headers=headers)
+    if sc not in (200, 204):
+        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        sys.exit(1)
+    print(f"specs: deleted bug #{bug.get('number')} — {bug.get('title', '')}")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -3696,6 +4260,13 @@ def main():
             sys.exit(1)
         sev = filtered[3] if len(filtered) > 3 else "medium"
         create_bug(filtered[0], filtered[1], filtered[2], sev, images or None)
+    elif cmd == "view-backlog":
+        as_json = "--json" in args
+        positional = [a for a in args[1:] if a != "--json"]
+        if len(positional) < 2:
+            print("Usage: specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]", file=sys.stderr)
+            sys.exit(1)
+        view_backlog(positional[0], positional[1], as_json=as_json)
     elif cmd == "backlog":
         # Spec 013: --epics / --flat / --status / --priority
         positional = [a for a in args[1:] if not a.startswith("--")]
@@ -3739,9 +4310,9 @@ def main():
         set_backlog_parent(args[1], args[2], args[3])
     elif cmd == "backlog-update":
         # Bug #14: edit/delete affordance on the CLI to match the portal.
-        # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status flags.
+        # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status"}
+        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic"}
         fields = {}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
@@ -3760,14 +4331,70 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false]", file=sys.stderr)
             sys.exit(1)
+        # Coerce --epic value to a real bool — backend rejects strings here.
+        if "isEpic" in fields:
+            v = str(fields["isEpic"]).lower()
+            if v not in ("true", "false"):
+                print(f"specs: --epic must be 'true' or 'false', got '{fields['isEpic']}'", file=sys.stderr)
+                sys.exit(1)
+            fields["isEpic"] = (v == "true")
         update_backlog_item(positional[0], positional[1], fields)
     elif cmd == "backlog-delete":
         if len(args) < 3:
             print("Usage: specs-cli.py backlog-delete <project-id> <item-id-or-#N>", file=sys.stderr)
             sys.exit(1)
         delete_backlog_item(args[1], args[2])
+    elif cmd == "backlog-comment":
+        if len(args) < 4:
+            print("Usage: specs-cli.py backlog-comment <project-id> <item-id-or-#N> <body>", file=sys.stderr)
+            sys.exit(1)
+        add_backlog_comment(args[1], args[2], args[3])
+    elif cmd == "backlog-comments":
+        as_json = "--json" in args
+        positional = [a for a in args[1:] if a != "--json"]
+        if len(positional) < 2:
+            print("Usage: specs-cli.py backlog-comments <project-id> <item-id-or-#N> [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_backlog_comments(positional[0], positional[1], as_json=as_json)
+    elif cmd == "delete-backlog-comment":
+        if len(args) < 4:
+            print("Usage: specs-cli.py delete-backlog-comment <project-id> <item-id-or-#N> <comment-id>", file=sys.stderr)
+            sys.exit(1)
+        delete_backlog_comment(args[1], args[2], args[3])
+    elif cmd == "promote-backlog":
+        if len(args) < 3:
+            print("Usage: specs-cli.py promote-backlog <project-id> <item-id-or-#N>", file=sys.stderr)
+            sys.exit(1)
+        promote_backlog(args[1], args[2])
+    elif cmd == "restore-backlog":
+        if len(args) < 3:
+            print("Usage: specs-cli.py restore-backlog <project-id> <item-id-or-uuid>", file=sys.stderr)
+            sys.exit(1)
+        restore_backlog(args[1], args[2])
+    elif cmd == "delete-bug":
+        if len(args) < 3:
+            print("Usage: specs-cli.py delete-bug <project-id> <bug-id-or-#N>", file=sys.stderr)
+            sys.exit(1)
+        delete_bug(args[1], args[2])
+    elif cmd == "list-attachments":
+        as_json = "--json" in args
+        positional = [a for a in args[1:] if a != "--json"]
+        if len(positional) < 2:
+            print("Usage: specs-cli.py list-attachments <feature|bug|backlog> <entity-uuid> [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_attachments(positional[0], positional[1], as_json=as_json)
+    elif cmd == "download-attachment":
+        if len(args) < 3:
+            print("Usage: specs-cli.py download-attachment <attachment-id> <out-path>", file=sys.stderr)
+            sys.exit(1)
+        download_attachment(args[1], args[2])
+    elif cmd == "delete-attachment":
+        if len(args) < 2:
+            print("Usage: specs-cli.py delete-attachment <attachment-id>", file=sys.stderr)
+            sys.exit(1)
+        delete_attachment(args[1])
     elif cmd == "create-feature":
         if len(args) < 3:
             print("Usage: specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]", file=sys.stderr)
@@ -3889,16 +4516,35 @@ def main():
     elif cmd == "post-tool-use":
         handle_post_tool_use()
     elif cmd == "attach":
+        # Three forms:
+        #   attach <file> [<project-id>/<feature-name>]      — feature (legacy, infers from path)
+        #   attach <file> --bug <project-id> <#N>            — attach to a bug
+        #   attach <file> --backlog <project-id> <#N>        — attach to a backlog item
         if len(args) < 2:
             print(
-                "Usage: specs-cli.py attach <file-path> [<project-id>/<feature-name>]\n"
-                "  If the feature identifier is omitted, it is inferred from the file path.",
+                "Usage:\n"
+                "  specs-cli.py attach <file-path> [<project-id>/<feature-name>]\n"
+                "  specs-cli.py attach <file-path> --bug <project-id> <bug-#N>\n"
+                "  specs-cli.py attach <file-path> --backlog <project-id> <backlog-#N>",
                 file=sys.stderr,
             )
             sys.exit(1)
         file_path = args[1]
-        feature_id = args[2] if len(args) >= 3 else None
-        attach_file(file_path, feature_id)
+        if "--bug" in args:
+            i = args.index("--bug")
+            if i + 2 >= len(args):
+                print("specs: --bug requires <project-id> <bug-#N>", file=sys.stderr)
+                sys.exit(1)
+            attach_to_bug(args[i + 1], args[i + 2], file_path)
+        elif "--backlog" in args:
+            i = args.index("--backlog")
+            if i + 2 >= len(args):
+                print("specs: --backlog requires <project-id> <backlog-#N>", file=sys.stderr)
+                sys.exit(1)
+            attach_to_backlog(args[i + 1], args[i + 2], file_path)
+        else:
+            feature_id = args[2] if len(args) >= 3 else None
+            attach_file(file_path, feature_id)
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)
         sys.exit(1)

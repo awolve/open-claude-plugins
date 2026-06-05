@@ -1,10 +1,10 @@
 ---
-description: Update a backlog item's title, description, priority, or status
+description: Update a backlog item's title, description, priority, status, or epic flag
 ---
 
 # /awolve-spec:backlog-update
 
-Edit fields on an existing backlog item. Use this when the framing of an item has shifted, the priority has changed, or the status needs to advance without going through the portal.
+Edit fields on an existing backlog item. Use this when the framing of an item has shifted, the priority has changed, the status needs to advance, or you want to promote/demote the epic flag without going through the portal.
 
 ## Instructions
 
@@ -15,12 +15,12 @@ Parse the user's argument. Expected forms:
 
 Item references accept UUIDs or `#N` numeric form (with or without `#`).
 
-At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|completed|archived).
+At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|completed|archived), `--epic` (true|false).
 
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false]
 ```
 
 Examples:
@@ -34,10 +34,14 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 1
 
 # Replace the description
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --description "Add backlog-update and backlog-delete to the CLI."
+
+# Promote an item to an epic
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --epic true
 ```
 
 ## Notes
 
-- To reparent or toggle the epic flag, use `/awolve-spec:backlog-set-parent` instead — clearer error reporting and validation.
+- To reparent an item under a different epic, use `/awolve-spec:backlog-set-parent` — clearer error reporting and validation.
+- Server-side constraints on `--epic`: epics must be top-level (no parent), can't toggle on an item that has children, can't demote-with-children.
 - To remove an item entirely, use `/awolve-spec:backlog-delete` (soft-delete).
 - The server records each change in the audit log.
