@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.17.0 — 2026-06-05
+
+**Feat: surface backlog descriptions + close the gap between CLI and backend.**
+
+The CLI used to print backlog items as title + status only — no description, no comments, no way to read what a `#N` actually meant before implementing it. The backend had richer routes (`/backlog/:id/comments`, `/promote`, `/restore`, generic attachments) that were simply not wired into the CLI.
+
+New subcommands:
+
+- `view-backlog <project> <#N>` — full description, parent, children (for epics), and comments via `/api/portal/projects/:p/backlog/by-number/:n`
+- `backlog-comment` / `backlog-comments` / `delete-backlog-comment` — mirror of bug-comment CRUD for backlog items
+- `promote-backlog <project> <#N>` — promote a backlog item to a feature (server creates the feature, seeds a `spec.md` quick-spec, links the item)
+- `restore-backlog <project> <uuid>` — restore a soft-deleted item (internal only)
+- `delete-bug <project> <#N>` — soft-delete a bug (internal only)
+- `list-attachments <feature|bug|backlog> <uuid>` — list attached files on any entity
+- `download-attachment <id> <out-path>` — fetch a single attachment's bytes (the `pull` command is whole-project; this is the targeted variant)
+- `delete-attachment <id>` — remove an attachment
+- `attach <file> --bug <project> <#N>` / `--backlog <project> <#N>` — `attach` previously only targeted features; now it accepts bug and backlog targets too (the backend already supported `entityType: bug|backlog` on `/api/portal/attachments`)
+
+Extended:
+
+- `backlog-update --epic true|false` — flip the epic flag on an existing item (server-side constraints: epics must be top-level, can't toggle if the item has children, can't demote-with-children)
+
+Backwards-compatible: every existing command behaves identically. Slash commands added for each new subcommand.
+
 ## 0.16.7 — 2026-05-28
 
 **Fix: `find_project_root()` now works from inside symlinked trees.**
