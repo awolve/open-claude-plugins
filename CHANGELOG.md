@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.1 — 2026-06-15
+
+**Fix: `view-bug` now shows the description, body fields, and screenshots.**
+
+`view-bug` fetched only the project bug *list* (`/api/portal/projects/:p/bugs`), which returns a deliberately slim shape — no `description`, `steps`, `expected`, `actual`, or `environment` (those are omitted server-side because pasted screenshots can push a single bug body past 500 KB). It then read those fields off the slim row, so every bug rendered `(no description)` and any inline screenshot was invisible to the CLI — even when the portal clearly showed one.
+
+- `view-bug` now follows up with the detail endpoint (`/api/portal/bugs/:id`) for the full record, mirroring how `view-backlog` already works. `--json` emits the full detail too.
+- Inline base64 data-URI images (`![alt](data:image/png;base64,…)`) in `description`/`steps`/`expected`/`actual` are replaced with a compact `[📎 alt — inline png image, ~NNN KB — open portal to view]` marker, so the body stays readable and it's obvious a screenshot exists without dumping hundreds of KB of base64 to the terminal.
+- `view-backlog` gets the same image-stripping treatment (it already fetched the full detail, but printed raw base64 if an item had a pasted screenshot).
+- Falls back to metadata-only (with a stderr note) if the detail fetch fails.
+
 ## 0.17.0 — 2026-06-05
 
 **Feat: surface backlog descriptions + close the gap between CLI and backend.**

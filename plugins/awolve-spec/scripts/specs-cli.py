@@ -1921,6 +1921,39 @@ def list_bugs(project_id=None):
             print(f"        {status} — reported by {reporter}")
 
 
+# Markdown image carrying an inline base64 data URI:
+# ![alt](data:image/png;base64,AAAA...)
+_INLINE_IMG_RE = re.compile(
+    r"!\[([^\]]*)\]\(data:image/([A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+?)\)"
+)
+
+
+def _strip_inline_images(text):
+    """Replace inline base64 data-URI images with a compact placeholder.
+
+    Bug/backlog bodies often carry pasted screenshots inline in the
+    description as `![alt](data:image/png;base64,...)` — hundreds of KB each.
+    Dumping the raw base64 to the terminal is useless and floods the reader;
+    replace each with a one-line marker that keeps the alt text and reports
+    the decoded size, so it's obvious a screenshot exists (open the portal to
+    view it). Returns (clean_text, image_count).
+    """
+    if not text:
+        return text, 0
+    count = 0
+
+    def _repl(m):
+        nonlocal count
+        count += 1
+        alt = (m.group(1) or "").strip() or "image"
+        fmt = m.group(2)
+        b64 = re.sub(r"\s+", "", m.group(3))
+        kb = max(1, (len(b64) * 3 // 4) // 1024)
+        return f"[📎 {alt} — inline {fmt} image, ~{kb} KB — open portal to view]"
+
+    return _INLINE_IMG_RE.sub(_repl, text), count
+
+
 def view_bug(project_id, bug_number, as_json=False):
     """Show full details for a single bug by its short number."""
     cfg = config.read_config()
@@ -1962,23 +1995,51 @@ def view_bug(project_id, bug_number, as_json=False):
         print(f"specs: bug #{number} not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
+    # The list endpoint returns a deliberately slim shape — it omits the body
+    # fields (description, steps, expected, actual, environment), which can be
+    # hundreds of KB of inline base64 screenshots. Fetch the detail endpoint
+    # for the full record; without this every bug rendered "(no description)"
+    # and pasted screenshots were invisible to the CLI.
+    bug_id = match.get("id")
+    detail = match
+    if bug_id:
+        try:
+            d_status, d_body = api_request(
+                f"{service_url}/api/portal/bugs/{bug_id}", headers=headers
+            )
+            if d_status == 200:
+                detail = json.loads(d_body)
+            else:
+                print(
+                    f"specs: could not fetch bug body (HTTP {d_status}); showing metadata only",
+                    file=sys.stderr,
+                )
+        except ConnectionError as e:
+            print(
+                f"specs: could not fetch bug body ({e}); showing metadata only",
+                file=sys.stderr,
+            )
+
     if as_json:
-        print(json.dumps(match, indent=2))
+        print(json.dumps(detail, indent=2))
         return
 
-    severity = match.get("severity", "?")
+    severity = detail.get("severity", "?")
     sev_marker = {"critical": "!!!", "high": "!!", "medium": "!", "low": "."}.get(severity, "?")
-    reporter = match.get("reporterName") or match.get("reporterEmail", "?")
-    title = match.get("title", "untitled")
-    status = match.get("status", "?")
-    created = match.get("createdAt", "?")
-    updated = match.get("updatedAt", "?")
-    description = match.get("description") or "(no description)"
-    steps = match.get("steps")
-    expected = match.get("expected")
-    actual = match.get("actual")
-    environment = match.get("environment")
-    comment_count = match.get("commentCount", 0)
+    reporter = detail.get("reporterName") or detail.get("reporterEmail", "?")
+    title = detail.get("title", "untitled")
+    status = detail.get("status", "?")
+    created = detail.get("createdAt", "?")
+    updated = detail.get("updatedAt", "?")
+    description, _desc_imgs = _strip_inline_images(detail.get("description") or "")
+    if not description:
+        description = "(no description)"
+    steps, _ = _strip_inline_images(detail.get("steps"))
+    expected, _ = _strip_inline_images(detail.get("expected"))
+    actual, _ = _strip_inline_images(detail.get("actual"))
+    environment = detail.get("environment")
+    comments = detail.get("comments")
+    comment_count = len(comments) if isinstance(comments, list) else match.get("commentCount", 0)
 
     print(f"#{number} [{sev_marker} {severity}] {title}")
     print(f"  status:    {status}")
@@ -2504,7 +2565,9 @@ def view_backlog(project_id, ref, as_json=False):
     pri_marker = {"high": "!!!", "medium": "!!", "low": "!"}.get(priority, "?")
     is_epic = item.get("isEpic", False)
     epic_tag = "[EPIC] " if is_epic else ""
-    description = item.get("description") or "(no description)"
+    description, _ = _strip_inline_images(item.get("description") or "")
+    if not description:
+        description = "(no description)"
     feature_id = item.get("featureId")
     feature_title = item.get("featureTitle")
     feature_status = item.get("featureStatus")
