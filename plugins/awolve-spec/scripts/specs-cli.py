@@ -2645,8 +2645,10 @@ def add_backlog_comment(project_id, ref, body_text):
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/comments"
-    payload = json.dumps({"body": body_text}).encode("utf-8")
-    sc, body = api_request(url, method="POST", headers=headers, data=payload)
+    # Pass a dict, not pre-encoded bytes: api_request only attaches the JSON
+    # body + Content-Type for dict/str data (bytes falls through both branches,
+    # sending an empty body → server 400 "body is required").
+    sc, body = api_request(url, method="POST", headers=headers, data={"body": body_text})
     if sc not in (200, 201):
         print(f"specs: comment failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)

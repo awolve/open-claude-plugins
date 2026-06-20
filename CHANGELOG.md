@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.2 — 2026-06-20
+
+**Fix: `backlog-comment` now actually sends the comment body.**
+
+`add_backlog_comment` passed a pre-`json.dumps().encode()`'d **bytes** payload to `api_request`. That helper only attaches the request body + `Content-Type` when `data` is a `dict` or `str` — bytes matched neither branch, so the POST went out with an empty body and the server rejected it with `400 "body is required"`. The command had been broken since `backlog-comment` was introduced in 0.17.0.
+
+- Pass `data={"body": body_text}` (a dict) so `api_request` serialises it and sets `Content-Type: application/json`, matching every other POST caller in the CLI.
+
 ## 0.17.1 — 2026-06-15
 
 **Fix: `view-bug` now shows the description, body fields, and screenshots.**
