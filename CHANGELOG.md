@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.3 — 2026-06-20
+
+**Harden: `api_request` raises on unsupported `data` types instead of silently sending an empty body.**
+
+The 0.17.2 bug was invisible because `api_request` quietly left `body_bytes=None` whenever `data` was neither `str` nor `dict` (e.g. pre-encoded bytes), sending an empty body that the server rejected with a confusing `400 "body is required"`.
+
+- `api_request` now raises `TypeError` for any non-`None` `data` that isn't a `dict` or `str`, so a mistaken caller fails loudly at the source instead of producing an empty request.
+- The two body-less POSTs (`promote-backlog`, `restore-backlog`) now pass `data=None` instead of `data=b""`, matching the helper's contract (`None` = no body).
+
 ## 0.17.2 — 2026-06-20
 
 **Fix: `backlog-comment` now actually sends the comment body.**

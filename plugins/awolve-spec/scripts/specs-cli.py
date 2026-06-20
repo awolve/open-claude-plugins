@@ -230,6 +230,15 @@ def api_request(url, method="GET", headers=None, data=None):
         elif isinstance(data, dict):
             body_bytes = json.dumps(data).encode("utf-8")
             headers.setdefault("Content-Type", "application/json")
+        else:
+            # Fail loud: a non-None data of any other type (e.g. pre-encoded
+            # bytes) would otherwise leave body_bytes=None and silently send an
+            # empty body — the trap behind the 0.17.2 backlog-comment bug. Pass
+            # a dict (JSON) or str (markdown); use data=None for a body-less POST.
+            raise TypeError(
+                f"api_request: unsupported data type {type(data).__name__}; "
+                "pass a dict (JSON), str (markdown), or None (no body)"
+            )
 
     is_get = method.upper() == "GET"
     max_attempts = 3 if is_get else 2
@@ -2739,7 +2748,7 @@ def promote_backlog(project_id, ref):
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/promote"
-    sc, body = api_request(url, method="POST", headers=headers, data=b"")
+    sc, body = api_request(url, method="POST", headers=headers, data=None)
     if sc not in (200, 201):
         print(f"specs: promote failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
@@ -2769,7 +2778,7 @@ def restore_backlog(project_id, ref):
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/restore"
-    sc, body = api_request(url, method="POST", headers=headers, data=b"")
+    sc, body = api_request(url, method="POST", headers=headers, data=None)
     if sc not in (200, 201):
         print(f"specs: restore failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
