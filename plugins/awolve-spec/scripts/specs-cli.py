@@ -61,7 +61,7 @@ Usage:
     specs-cli.py view-bug <project-id> <bug-number> [--json]
                                        — Show full details of a single bug (description, severity, repro, etc.)
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
-                                       — Change a bug's status (open|triaged|in_progress|resolved|closed)
+                                       — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S]
                                        — Edit a bug's title, description, or severity
     specs-cli.py bug-comments <project-id> <bug-number> [--json]
@@ -1870,7 +1870,7 @@ def set_status(identifier, new_status):
 # ---------------------------------------------------------------------------
 
 BUG_SEVERITIES = ["low", "medium", "high", "critical"]
-BUG_STATUSES = ["open", "triaged", "in_progress", "resolved", "closed"]
+BUG_STATUSES = ["open", "triaged", "in_progress", "ready_for_retest", "resolved", "closed"]
 
 
 def list_bugs(project_id=None):

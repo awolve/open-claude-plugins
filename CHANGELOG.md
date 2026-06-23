@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.0 — 2026-06-23
+
+**Support the new `ready_for_retest` bug status.**
+
+The spec service added a `ready_for_retest` status (between `in_progress` and `resolved`) for bugs whose fix is in and are waiting on the reporter/QA to verify. The CLI's status allowlist rejected it.
+
+- `set-bug-status` now accepts `ready_for_retest`; added to the `BUG_STATUSES` allowlist, the usage text, and the `set-bug-status` / `spec` skill docs.
+
 ## 0.17.3 — 2026-06-20
 
 **Harden: `api_request` raises on unsupported `data` types instead of silently sending an empty body.**

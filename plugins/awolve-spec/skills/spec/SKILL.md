@@ -62,7 +62,7 @@ Each phase is a separate command invocation. Do not write multiple spec files in
 - `/awolve-spec:view-bug` — Show full details of a single bug (description, severity, repro)
 - `/awolve-spec:bug` — Report a new bug
 - `/awolve-spec:update-bug` — Edit a bug's title, description, or severity
-- `/awolve-spec:set-bug-status` — Change a bug's status (open/triaged/in_progress/resolved/closed)
+- `/awolve-spec:set-bug-status` — Change a bug's status (open/triaged/in_progress/ready_for_retest/resolved/closed)
 - `/awolve-spec:bug-comments` — List comments on a bug
 - `/awolve-spec:bug-comment` — Add a comment to a bug (attach commit SHA, version, rollout notes)
 - `/awolve-spec:edit-bug-comment` — Edit a bug comment. Author or any internal user; audited (`bug_comment.update`).
@@ -97,7 +97,7 @@ Full subcommand surface:
 | `view-bug <project-id> <bug-number> [--json]` | Full bug details |
 | `bug <project-id> <title> <description> [severity] [--attach file ...]` | Report a bug |
 | `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S]` | Edit a bug's title, description, or severity. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. |
-| `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/resolved/closed) |
+| `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/ready_for_retest/resolved/closed) |
 | `bug-comments <project-id> <bug-number> [--json]` | List the comment thread on a bug (oldest-first). Comment UUIDs shown in brackets so they can be passed to edit/delete commands. |
 | `bug-comment <project-id> <bug-number> <body>` | Add a comment to a bug |
 | `edit-bug-comment <project-id> <bug-number> <comment-id> <body>` | Edit a bug comment (author or internal user). Audited. |

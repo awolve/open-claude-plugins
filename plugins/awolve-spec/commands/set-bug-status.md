@@ -1,5 +1,5 @@
 ---
-description: Change a bug's status (open, triaged, in_progress, resolved, closed)
+description: Change a bug's status (open, triaged, in_progress, ready_for_retest, resolved, closed)
 ---
 
 # /set-bug-status
@@ -13,7 +13,9 @@ Parse the user's argument. Expected forms:
 - `<bug-number> <status>` — e.g. `5 resolved`. Use the configured project if exactly one is in config; otherwise ask which project.
 - `<project-id> <bug-number> <status>` — explicit project.
 
-Valid statuses: `open`, `triaged`, `in_progress`, `resolved`, `closed`.
+Valid statuses: `open`, `triaged`, `in_progress`, `ready_for_retest`, `resolved`, `closed`.
+
+`ready_for_retest` means the fix is in and the bug is waiting for the reporter/QA to verify — it sits between `in_progress` and `resolved`.
 
 Then run:
 
