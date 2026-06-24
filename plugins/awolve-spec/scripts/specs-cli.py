@@ -4460,6 +4460,236 @@ def delete_bug(project_id, bug_ref):
 # CLI
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Manual Test Runs (spec 015) — author runs/sections/cases, import matrices,
+# manage testers, read coverage, sign off. Mirrors the portal admin.
+# ---------------------------------------------------------------------------
+
+TEST_RUN_TYPES = ["uat", "regression", "smoke", "exploratory", "other"]
+TEST_SIGNOFF_DECISIONS = ["accepted", "accepted_with_conditions", "rejected"]
+
+
+def _test_request(path, method="GET", data=None):
+    _, headers, service_url = _init_and_auth()
+    h = dict(headers)
+    if data is not None:
+        h["Content-Type"] = "application/json"
+    try:
+        status, body = api_request(f"{service_url}{path}", method=method, headers=h, data=data)
+    except ConnectionError as e:
+        print(f"specs: request failed — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status not in (200, 201):
+        print(f"specs: HTTP {status}: {body}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(body) if body else {}
+
+
+def test_run_create(project, name, run_type, description, start, end):
+    if run_type not in TEST_RUN_TYPES:
+        print(f"specs: type must be one of {', '.join(TEST_RUN_TYPES)}", file=sys.stderr)
+        sys.exit(1)
+    run = _test_request(f"/api/portal/projects/{project}/test-runs", "POST", {
+        "name": name, "type": run_type, "description": description, "targetStart": start, "targetEnd": end,
+    })
+    print(f"specs: test run #{run.get('number','?')} created — {name} [{run_type}]")
+    print(f"  id: {run.get('id')}")
+
+
+def test_run_list(project, run_type):
+    q = f"?type={run_type}" if run_type else ""
+    runs = _test_request(f"/api/portal/projects/{project}/test-runs{q}")
+    if not runs:
+        print("specs: no test runs")
+        return
+    for r in runs:
+        print(f"  #{r['number']:<3} [{r['type']:<11}] {r['status']:<8} {r['name']}  "
+              f"({r.get('caseCount',0)} cases, {r.get('testerCount',0)} testers)  id={r['id']}")
+
+
+def test_run_show(run_id):
+    run = _test_request(f"/api/portal/test-runs/{run_id}")
+    print(f"#{run['number']} {run['name']} [{run['type']}] — {run['status']}")
+    by_section = {}
+    for c in run.get("cases", []):
+        by_section.setdefault(c["sectionId"], []).append(c)
+    for s in run.get("sections", []):
+        print(f"\n  {s['name']}  (id={s['id']})")
+        for c in by_section.get(s["id"], []):
+            print(f"    {c['caseKey']:<10} {c['whatYouDo'][:60]}")
+    print(f"\n  testers: {len(run.get('testers', []))}")
+
+
+def test_section_add(run_id, name, position):
+    data = {"name": name}
+    if position is not None:
+        data["position"] = position
+    s = _test_request(f"/api/portal/test-runs/{run_id}/sections", "POST", data)
+    print(f"specs: section '{name}' added — id={s.get('id')}")
+
+
+def test_case_add(run_id, section_id, key, what, expected, feature_id):
+    data = {"sectionId": section_id, "caseKey": key, "whatYouDo": what, "expected": expected}
+    if feature_id:
+        data["featureId"] = feature_id
+    c = _test_request(f"/api/portal/test-runs/{run_id}/cases", "POST", data)
+    print(f"specs: case {key} added — id={c.get('id')}")
+
+
+def _parse_matrix(path):
+    """Parse a TSV/CSV/JSON test matrix into import rows (section/caseKey/whatYouDo/expected)."""
+    if path.endswith(".json"):
+        with open(path) as f:
+            doc = json.load(f)
+        rows = doc.get("cases", doc) if isinstance(doc, dict) else doc
+        out = []
+        for r in rows:
+            out.append({
+                "section": r.get("section"),
+                "caseKey": r.get("caseKey") or r.get("case_id") or r.get("case"),
+                "whatYouDo": r.get("whatYouDo") or r.get("what_you_do") or r.get("what"),
+                "expected": r.get("expected"),
+            })
+        return [r for r in out if all(r.get(k) for k in ("section", "caseKey", "whatYouDo", "expected"))]
+    with open(path) as f:
+        lines = [ln.rstrip("\n") for ln in f if ln.strip()]
+    if not lines:
+        return []
+    delim = "\t" if "\t" in lines[0] else ","
+    header = [h.strip() for h in lines[0].split(delim)]
+    idx = {h: i for i, h in enumerate(header)}
+
+    def col(parts, *names):
+        for n in names:
+            if n in idx and idx[n] < len(parts):
+                return parts[idx[n]].strip()
+        return ""
+
+    out = []
+    for ln in lines[1:]:
+        parts = ln.split(delim)
+        row = {
+            "section": col(parts, "section"),
+            "caseKey": col(parts, "case_id", "caseKey", "case"),
+            "whatYouDo": col(parts, "what_you_do", "whatYouDo", "what"),
+            "expected": col(parts, "expected"),
+        }
+        if all(row.values()):
+            out.append(row)
+    return out
+
+
+def test_import_cases(run_id, path):
+    rows = _parse_matrix(path)
+    if not rows:
+        print("specs: no rows parsed from the matrix (need columns: section, case_id, what_you_do, expected)", file=sys.stderr)
+        sys.exit(1)
+    res = _test_request(f"/api/portal/test-runs/{run_id}/import", "POST", {"cases": rows})
+    print(f"specs: imported — {res.get('casesNew',0)} new, {res.get('casesUpdated',0)} updated, "
+          f"{res.get('sectionsCreated',0)} new sections")
+
+
+def test_tester_add(run_id, name, user_email, as_token):
+    if user_email and not as_token:
+        data = {"kind": "user", "email": user_email}
+    else:
+        if not name:
+            print("specs: token tester needs --name", file=sys.stderr)
+            sys.exit(1)
+        data = {"kind": "token", "displayName": name}
+    t = _test_request(f"/api/portal/test-runs/{run_id}/testers", "POST", data)
+    if t.get("link"):
+        cfg = config.read_config()
+        base = cfg["service_url"] if cfg else ""
+        print(f"specs: token tester '{t.get('displayName')}' added")
+        print(f"  link: {base}{t['link']}")
+    else:
+        print(f"specs: tester '{t.get('displayName')}' added — id={t.get('id')}")
+
+
+def test_coverage(run_id):
+    cov = _test_request(f"/api/portal/test-runs/{run_id}/coverage")
+    o = cov["overall"]
+    print(f"#{cov['run']['number']} {cov['run']['name']} — {o['covered']}/{o['totalCases']} covered, {o['withFail']} with a fail")
+    for s in cov.get("sections", []):
+        print(f"  {s['name'][:40]:<40} {s['covered']}/{s['totalCases']} covered, {s['withFail']} fail, {s['pending']} pending")
+    if cov.get("signoff"):
+        print(f"  sign-off: {cov['signoff']['decision']} by {cov['signoff']['signedBy']}")
+
+
+def test_signoff(run_id, decision, note):
+    if decision not in TEST_SIGNOFF_DECISIONS:
+        print(f"specs: decision must be one of {', '.join(TEST_SIGNOFF_DECISIONS)}", file=sys.stderr)
+        sys.exit(1)
+    s = _test_request(f"/api/portal/test-runs/{run_id}/signoff", "PUT", {"decision": decision, "note": note})
+    print(f"specs: signed off test run — {s.get('decision')}")
+
+
+def _parse_flags(rest, value_flags, bool_flags=()):
+    """Split a token list into positionals, --flag values, and present --bools."""
+    vals, bools, pos, i = {}, set(), [], 0
+    while i < len(rest):
+        a = rest[i]
+        if a in value_flags and i + 1 < len(rest):
+            vals[a] = rest[i + 1]; i += 2
+        elif a in bool_flags:
+            bools.add(a); i += 1
+        elif a.startswith("--"):
+            i += 1
+        else:
+            pos.append(a); i += 1
+    return pos, vals, bools
+
+
+def handle_test(args):
+    sub = args[0] if args else None
+    pos, vals, bools = _parse_flags(
+        args[1:],
+        value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
+                     "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note"},
+        bool_flags={"--token", "--json"},
+    )
+    if sub == "run-create":
+        if not pos or not vals.get("--name"):
+            print("Usage: specs-cli.py test run-create <project> --name <name> [--type uat] [--description ..] [--start YYYY-MM-DD] [--end YYYY-MM-DD]", file=sys.stderr); sys.exit(1)
+        test_run_create(pos[0], vals["--name"], vals.get("--type", "uat"), vals.get("--description"), vals.get("--start"), vals.get("--end"))
+    elif sub == "run-list":
+        if not pos:
+            print("Usage: specs-cli.py test run-list <project> [--type T]", file=sys.stderr); sys.exit(1)
+        test_run_list(pos[0], vals.get("--type"))
+    elif sub == "run-show":
+        if not pos:
+            print("Usage: specs-cli.py test run-show <run-id>", file=sys.stderr); sys.exit(1)
+        test_run_show(pos[0])
+    elif sub == "section-add":
+        if not pos or not vals.get("--name"):
+            print("Usage: specs-cli.py test section-add <run-id> --name <name> [--position N]", file=sys.stderr); sys.exit(1)
+        test_section_add(pos[0], vals["--name"], int(vals["--position"]) if vals.get("--position") else None)
+    elif sub == "case-add":
+        if not pos or not all(vals.get(k) for k in ("--section", "--key", "--what", "--expected")):
+            print("Usage: specs-cli.py test case-add <run-id> --section <section-id> --key NAV-01 --what '..' --expected '..' [--feature <feature-id>]", file=sys.stderr); sys.exit(1)
+        test_case_add(pos[0], vals["--section"], vals["--key"], vals["--what"], vals["--expected"], vals.get("--feature"))
+    elif sub == "import-cases":
+        if len(pos) < 2:
+            print("Usage: specs-cli.py test import-cases <run-id> <matrix.tsv|.csv|.json>", file=sys.stderr); sys.exit(1)
+        test_import_cases(pos[0], pos[1])
+    elif sub == "tester-add":
+        if not pos:
+            print("Usage: specs-cli.py test tester-add <run-id> (--user <email> | --name '<Name>' --token)", file=sys.stderr); sys.exit(1)
+        test_tester_add(pos[0], vals.get("--name"), vals.get("--user"), "--token" in bools)
+    elif sub == "coverage":
+        if not pos:
+            print("Usage: specs-cli.py test coverage <run-id>", file=sys.stderr); sys.exit(1)
+        test_coverage(pos[0])
+    elif sub == "signoff":
+        if not pos or not vals.get("--decision"):
+            print("Usage: specs-cli.py test signoff <run-id> --decision accepted|accepted_with_conditions|rejected [--note ..]", file=sys.stderr); sys.exit(1)
+        test_signoff(pos[0], vals["--decision"], vals.get("--note"))
+    else:
+        print("Usage: specs-cli.py test <run-create|run-list|run-show|section-add|case-add|import-cases|tester-add|coverage|signoff> ...", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     args = sys.argv[1:]
 
@@ -4594,6 +4824,8 @@ def main():
         dry_run = "--dry-run" in args
         include_venv = "--include-venv" in args
         cleanup_synced_tree(dry_run=dry_run, include_venv=include_venv)
+    elif cmd == "test":
+        handle_test(args[1:])
     elif cmd == "status":
         show_status()
     elif cmd == "set-status":

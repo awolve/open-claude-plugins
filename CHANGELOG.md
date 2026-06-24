@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0 — 2026-06-24
+
+**`test` CLI command group** (spec-service feature 015 — Manual Test Runs).
+
+`specs-cli.py test <subcommand>` drives the new Manual Test Runs feature from the CLI — used to seed and inspect runs (e.g. importing the Medvind UAT matrix). Subcommands: `run-create`, `run-list`, `run-show`, `section-add`, `case-add`, `import-cases` (paste a section/case/what/expected matrix), `tester-add`, `coverage`, and `signoff`. Matrix parsing handles both tab- and comma-delimited input.
+
 ## 0.19.0 — 2026-06-24
 
 **Keep sync sidecars & build artifacts out of the synced tree** (spec-service feature 016).
