@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 — 2026-06-24
+
+**`test run-update` command.** Edit an existing test run from the CLI: `specs-cli.py test run-update <run-id> [--name ..] [--description ..] [--status draft|active|closed|archived] [--start YYYY-MM-DD] [--end YYYY-MM-DD]`. Covers the gap where the window/status could only be set at creation. Prints the updated run and its window.
+
 ## 0.20.0 — 2026-06-24
 
 **`test` CLI command group** (spec-service feature 015 — Manual Test Runs).

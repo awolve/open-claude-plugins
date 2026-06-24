@@ -4496,6 +4496,22 @@ def test_run_create(project, name, run_type, description, start, end):
     print(f"  id: {run.get('id')}")
 
 
+def test_run_update(run_id, name, description, status, start, end):
+    body = {}
+    if name is not None: body["name"] = name
+    if description is not None: body["description"] = description
+    if status is not None: body["status"] = status
+    if start is not None: body["targetStart"] = start
+    if end is not None: body["targetEnd"] = end
+    if not body:
+        print("specs: nothing to update (provide --name/--description/--status/--start/--end)", file=sys.stderr); sys.exit(1)
+    run = _test_request(f"/api/portal/test-runs/{run_id}", "PATCH", body)
+    print(f"specs: test run #{run.get('number','?')} updated — {run.get('name')} [{run.get('status')}]")
+    s, e = run.get("targetStart"), run.get("targetEnd")
+    if s or e:
+        print(f"  window: {(s or '—')[:10]} → {(e or '—')[:10]}")
+
+
 def test_run_list(project, run_type):
     q = f"?type={run_type}" if run_type else ""
     runs = _test_request(f"/api/portal/projects/{project}/test-runs{q}")
@@ -4646,7 +4662,7 @@ def handle_test(args):
     pos, vals, bools = _parse_flags(
         args[1:],
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
-                     "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note"},
+                     "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status"},
         bool_flags={"--token", "--json"},
     )
     if sub == "run-create":
@@ -4657,6 +4673,12 @@ def handle_test(args):
         if not pos:
             print("Usage: specs-cli.py test run-list <project> [--type T]", file=sys.stderr); sys.exit(1)
         test_run_list(pos[0], vals.get("--type"))
+    elif sub == "run-update":
+        if not pos:
+            print("Usage: specs-cli.py test run-update <run-id> [--name ..] [--description ..] "
+                  "[--status draft|active|closed|archived] [--start YYYY-MM-DD] [--end YYYY-MM-DD]", file=sys.stderr); sys.exit(1)
+        test_run_update(pos[0], vals.get("--name"), vals.get("--description"),
+                        vals.get("--status"), vals.get("--start"), vals.get("--end"))
     elif sub == "run-show":
         if not pos:
             print("Usage: specs-cli.py test run-show <run-id>", file=sys.stderr); sys.exit(1)
@@ -4686,7 +4708,7 @@ def handle_test(args):
             print("Usage: specs-cli.py test signoff <run-id> --decision accepted|accepted_with_conditions|rejected [--note ..]", file=sys.stderr); sys.exit(1)
         test_signoff(pos[0], vals["--decision"], vals.get("--note"))
     else:
-        print("Usage: specs-cli.py test <run-create|run-list|run-show|section-add|case-add|import-cases|tester-add|coverage|signoff> ...", file=sys.stderr)
+        print("Usage: specs-cli.py test <run-create|run-list|run-update|run-show|section-add|case-add|import-cases|tester-add|coverage|signoff> ...", file=sys.stderr)
         sys.exit(1)
 
 
