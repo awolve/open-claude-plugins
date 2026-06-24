@@ -12,6 +12,15 @@ Usage:
                                        [--limit N] [--json] [--since-last-visit] [--mark-read]
                                        — Stream audit events (one project, or --all for every configured project)
     specs-cli.py push <file_path>      — Push a single spec file
+    specs-cli.py conflicts [project-id] [--json]
+                                       — List sync conflicts staged out-of-tree (per-machine cache)
+    specs-cli.py conflict show <doc>   — Print the staged remote side of a conflict (doc_id or local path)
+    specs-cli.py conflict diff <doc>   — Unified diff: local doc vs staged remote
+    specs-cli.py conflict resolve <doc> --theirs|--mine|--merged <file>
+                                       — Resolve a conflict: take remote, push local, or push a merged file
+    specs-cli.py cleanup-synced-tree [--dry-run] [--include-venv]
+                                       — Purge legacy in-tree sync/build artifacts (.remote, conflict copies,
+                                         .specs-trash/, and with --include-venv, _gen/.venv/)
     specs-cli.py status                — Show sync status of local spec files
     specs-cli.py set-status <id> <status> — Set feature or document status
     specs-cli.py set-description <feature-id> <text>
@@ -125,6 +134,7 @@ sys.path.insert(0, SCRIPTS_DIR)
 
 import auth
 import config
+import conflict_store
 
 
 # ---------------------------------------------------------------------------
@@ -376,31 +386,9 @@ def state_needs_full_sync(project_state):
     return (datetime.now(timezone.utc) - dt) > _FULL_SYNC_INTERVAL
 
 
-# ---------------------------------------------------------------------------
-# Trash — move orphaned local files to .specs-trash/ on pull (spec 010 phase 3b)
-# ---------------------------------------------------------------------------
-
-def trash_move(specs_path, file_path):
-    """Move a file into .specs-trash/YYYY-MM-DD/ relative to specs_path.
-
-    Collisions get a numeric suffix (foo-1.md, foo-2.md, ...) so nothing in
-    the trash is ever overwritten.
-    """
-    rel = os.path.relpath(file_path, specs_path)
-    today = datetime.now().strftime("%Y-%m-%d")
-    trash_dir = os.path.join(specs_path, ".specs-trash", today, os.path.dirname(rel))
-    os.makedirs(trash_dir, exist_ok=True)
-    base = os.path.basename(rel)
-    target = os.path.join(trash_dir, base)
-    # Collision suffix
-    if os.path.exists(target):
-        stem, ext = os.path.splitext(base)
-        n = 1
-        while os.path.exists(os.path.join(trash_dir, f"{stem}-{n}{ext}")):
-            n += 1
-        target = os.path.join(trash_dir, f"{stem}-{n}{ext}")
-    shutil.move(file_path, target)
-    return target
+# Trash relocation now lives in conflict_store.trash_move (feature 016): orphans
+# move to the per-machine cache, never into the synced specs tree. The legacy
+# in-tree implementation (spec 010 phase 3b) was removed here.
 
 
 # ---------------------------------------------------------------------------
@@ -891,6 +879,63 @@ def _scan_local_specs(specs_path):
     return index
 
 
+def _migrate_in_tree_sidecars(specs_path, project_id, quiet=False):
+    """Relocate any legacy in-tree `*.remote` sidecars into the conflict store.
+
+    Feature 016: older plugin versions wrote `<doc>.md.remote` beside the local
+    doc, inside the synced tree. On the first pull after upgrade we read each
+    one, stage it out-of-tree (keyed by its `spec_doc_id`), and delete the
+    in-tree file — so OneDrive stops forking it. Best-effort: anything we can't
+    parse is left for `cleanup-synced-tree` to remove.
+
+    Returns the number of sidecars migrated.
+    """
+    if not os.path.isdir(specs_path):
+        return 0
+    migrated = 0
+    for root, dirs, files in os.walk(specs_path):
+        if ".specs-trash" in dirs:
+            dirs.remove(".specs-trash")
+        for fname in files:
+            if not fname.endswith(".remote"):
+                continue
+            sidecar = os.path.join(root, fname)
+            try:
+                with open(sidecar, "r", encoding="utf-8") as f:
+                    remote_text = f.read()
+            except (IOError, OSError):
+                continue
+            meta, _ = parse_frontmatter(remote_text)
+            doc_id = meta.get("spec_doc_id")
+            local_path = sidecar[: -len(".remote")]  # strip the suffix
+            if not doc_id or not conflict_store.ensure_writable():
+                continue
+            # base_hash = the local doc's last-synced hash at conflict time, if
+            # we can still read it; otherwise fall back to the remote hash.
+            base_hash = meta.get("last_synced_hash", "")
+            try:
+                with open(local_path, "r", encoding="utf-8") as f:
+                    lmeta, _ = parse_frontmatter(f.read())
+                base_hash = lmeta.get("last_synced_hash", base_hash)
+            except (IOError, OSError):
+                pass
+            try:
+                conflict_store.stage(
+                    doc_id, remote_text,
+                    local_path=local_path,
+                    project_id=project_id,
+                    remote_hash=meta.get("last_synced_hash", ""),
+                    base_hash=base_hash,
+                )
+                os.unlink(sidecar)
+                migrated += 1
+            except OSError:
+                continue
+    if migrated and not quiet:
+        print(f"specs: {project_id} — migrated {migrated} in-tree .remote sidecar(s) to the conflict store")
+    return migrated
+
+
 def pull_project(
     project_id,
     specs_path,
@@ -908,7 +953,7 @@ def pull_project(
             "synced": int,          # files written (new or updated)
             "unchanged": int,       # hash matched, possibly frontmatter retouched
             "trashed": int,         # local files orphaned by remote deletion
-            "conflicts": list[str], # paths where .remote sidecar was written
+            "conflicts": list[str], # local paths whose remote side was staged out-of-tree
             "skipped_errors": int,  # transient failures mid-pull
             "cursor": str | None,   # advanced if the manifest returned one
         }
@@ -958,6 +1003,12 @@ def pull_project(
 
     os.makedirs(specs_path, exist_ok=True)
 
+    # Feature 016: relocate any legacy in-tree `.remote` sidecars before we
+    # process docs, then pre-load the set of staged conflicts so the self-heal
+    # below (clear-on-reconcile) costs no I/O for the common no-conflict doc.
+    _migrate_in_tree_sidecars(specs_path, project_id, quiet=quiet)
+    staged_conflicts = conflict_store.staged_ids()
+
     # Index remote doc ids so we can find local orphans at the end.
     remote_doc_ids = {doc["id"] for doc in documents}
 
@@ -994,6 +1045,10 @@ def pull_project(
                         if doc_status:
                             local_meta["doc_status"] = doc_status
                         atomic_write(local_path, render_frontmatter(local_meta, local_body))
+                    # Self-heal: local now matches remote, so any previously
+                    # staged conflict for this doc is reconciled — clear it.
+                    if doc_id in staged_conflicts:
+                        conflict_store.clear(doc_id)
                     report["unchanged"] += 1
                     continue
 
@@ -1002,9 +1057,10 @@ def pull_project(
                 last_synced_hash = local_meta.get("last_synced_hash")
                 if last_synced_hash and last_synced_hash != local_hash:
                     # Local was modified since last sync AND remote has also
-                    # changed. Write remote to .remote sidecar, leave local
-                    # alone, report the conflict.
-                    sidecar = local_path + ".remote"
+                    # changed. Feature 016: stage the remote side OUT OF TREE
+                    # (in the per-machine cache, keyed by doc_id), leave local
+                    # alone, report the conflict. We never write beside the
+                    # local doc — that is what OneDrive forks across machines.
                     content_url = f"{service_url}/api/sync/documents/{doc_id}/content"
                     try:
                         dl_status, dl_body = api_request(content_url, headers=headers)
@@ -1027,7 +1083,23 @@ def pull_project(
                         sidecar_meta["doc_status"] = doc_status
                     if source_url:
                         sidecar_meta["source"] = source_url
-                    atomic_write(sidecar, render_frontmatter(sidecar_meta, dl_body))
+                    remote_text = render_frontmatter(sidecar_meta, dl_body)
+                    if conflict_store.ensure_writable():
+                        try:
+                            conflict_store.stage(
+                                doc_id, remote_text,
+                                local_path=local_path,
+                                project_id=project_id,
+                                remote_hash=remote_hash,
+                                base_hash=last_synced_hash,
+                            )
+                            staged_conflicts.add(doc_id)
+                        except OSError:
+                            # Cache write failed — never fall back to an
+                            # in-tree write; just report the conflict.
+                            report["conflict_unstaged"] = report.get("conflict_unstaged", 0) + 1
+                    else:
+                        report["conflict_unstaged"] = report.get("conflict_unstaged", 0) + 1
                     report["conflicts"].append(local_path)
                     continue
             except (IOError, OSError):
@@ -1060,6 +1132,10 @@ def pull_project(
             meta["source"] = source_url
 
         atomic_write(local_path, render_frontmatter(meta, dl_body))
+        # Self-heal: we just wrote remote over local, so any staged conflict
+        # for this doc is now reconciled — clear it.
+        if doc_id in staged_conflicts:
+            conflict_store.clear(doc_id)
         report["synced"] += 1
 
     # ---- Binary attachments ----
@@ -1113,7 +1189,9 @@ def pull_project(
                 if delete_mode == "prune":
                     os.unlink(local_path)
                 else:
-                    trash_move(specs_path, local_path)
+                    # Feature 016: trash lands in the per-machine cache, never
+                    # in the synced tree.
+                    conflict_store.trash_move(project_id, local_path, specs_path)
                 report["trashed"] += 1
             except OSError as e:
                 if not quiet:
@@ -1215,8 +1293,10 @@ def pull(project_filter=None, quiet=False, delete_mode="trash", force_full=False
             print()
             print(f"specs: {len(total_conflicts)} conflict{'s' if len(total_conflicts) != 1 else ''} — local drift + remote change:", file=sys.stderr)
             for path in total_conflicts:
-                print(f"  {path}  ({path}.remote written alongside)", file=sys.stderr)
-            print("  Review .remote files, reconcile manually, delete .remote files, then push.", file=sys.stderr)
+                print(f"  {path}", file=sys.stderr)
+            print("  The remote side is staged out-of-tree (nothing written beside your files).", file=sys.stderr)
+            print("  Inspect with:  specs-cli.py conflicts", file=sys.stderr)
+            print("  Resolve with:  specs-cli.py conflict resolve <doc> --theirs|--mine|--merged <file>", file=sys.stderr)
         if total_synced == 0 and total_unchanged == 0 and total_trashed == 0 and not total_conflicts:
             print(f"specs: pulled {len(projects)} project(s) — no changes")
 
@@ -1525,8 +1605,15 @@ def _current_user_email(headers):
 # Push
 # ---------------------------------------------------------------------------
 
-def push(file_path):
-    """Push a single spec file to the service."""
+def push(file_path, base_version_override=None):
+    """Push a single spec file to the service.
+
+    Returns True on success (or a no-op skip — server already has this exact
+    content), False on a 409 conflict. `base_version_override` forces the
+    base_version sent to the server (used by `conflict resolve --mine/--merged`
+    to push the local side over a remote that advanced past the local
+    frontmatter's recorded version).
+    """
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
@@ -1560,11 +1647,14 @@ def push(file_path):
 
     if not doc_id:
         print(f"specs: {file_path} has no spec_doc_id — skipping", file=sys.stderr)
-        return
+        return False
+
+    if base_version_override is not None:
+        base_version = base_version_override
 
     if base_version is None:
         print(f"specs: {file_path} has no spec_version — skipping", file=sys.stderr)
-        return
+        return False
 
     # Safety: strip any leaked frontmatter from body (e.g. double frontmatter)
     body = strip_frontmatter(body)
@@ -1579,7 +1669,7 @@ def push(file_path):
     body_hash = hashlib.sha256(body.strip().encode("utf-8")).hexdigest()
     last_hash = meta.get("last_synced_hash")
     if last_hash and last_hash == body_hash:
-        return
+        return True
 
     # Push
     push_url = f"{service_url}/api/sync/documents/{doc_id}/content?base_version={base_version}"
@@ -1593,7 +1683,7 @@ def push(file_path):
 
     if status_code == 409:
         print(f"specs: CONFLICT — remote has newer version. Pull first.", file=sys.stderr)
-        return
+        return False
     if status_code == 401:
         print("specs: authentication expired — run /awolve-spec:login", file=sys.stderr)
         sys.exit(1)
@@ -1619,6 +1709,220 @@ def push(file_path):
 
     rel = os.path.relpath(abs_path, proj["path"])
     print(f"specs: pushed {proj['id']}/{rel} (v{new_version})")
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Conflicts — staged out-of-tree (feature 016)
+# ---------------------------------------------------------------------------
+
+def list_conflicts_cmd(project_filter=None, as_json=False):
+    """List staged conflicts from the out-of-tree store."""
+    entries = conflict_store.list_conflicts(project_filter=project_filter)
+    if as_json:
+        out = [
+            {"doc_id": doc_id, **entry}
+            for doc_id, entry in entries
+        ]
+        print(json.dumps(out, indent=2))
+        return
+    if not entries:
+        print("specs: no staged conflicts")
+        return
+    print(f"specs: {len(entries)} staged conflict{'s' if len(entries) != 1 else ''}:")
+    for doc_id, entry in entries:
+        local = entry.get("local_path", "?")
+        proj = entry.get("project_id", "?")
+        staged = entry.get("staged_at", "?")
+        print(f"  [{proj}] {local}")
+        print(f"      doc {doc_id} · staged {staged}")
+    print()
+    print("  conflict show <doc> | conflict diff <doc> | conflict resolve <doc> --theirs|--mine|--merged <file>")
+
+
+def _resolve_conflict_ref(ref):
+    """Resolve a conflict command arg to (doc_id, entry, remote_text). Exits on miss."""
+    doc_id = conflict_store.find_by_ref(ref)
+    if not doc_id:
+        print(f"specs: no staged conflict for '{ref}' — run 'specs-cli.py conflicts' to list", file=sys.stderr)
+        sys.exit(1)
+    entry, remote_text = conflict_store.get(doc_id)
+    if remote_text is None:
+        print(f"specs: staged remote for '{ref}' is missing — re-run 'specs-cli.py pull'", file=sys.stderr)
+        sys.exit(1)
+    return doc_id, entry, remote_text
+
+
+def conflict_show(ref):
+    """Print the staged remote side of a conflict."""
+    _doc_id, _entry, remote_text = _resolve_conflict_ref(ref)
+    sys.stdout.write(remote_text)
+    if not remote_text.endswith("\n"):
+        sys.stdout.write("\n")
+
+
+def conflict_diff(ref):
+    """Print a unified diff: local doc vs staged remote."""
+    import difflib
+    _doc_id, entry, remote_text = _resolve_conflict_ref(ref)
+    local_path = entry.get("local_path", "")
+    try:
+        with open(local_path, "r", encoding="utf-8") as f:
+            local_text = f.read()
+    except (IOError, OSError):
+        local_text = ""
+    diff = difflib.unified_diff(
+        local_text.splitlines(keepends=True),
+        remote_text.splitlines(keepends=True),
+        fromfile=f"{local_path} (local)",
+        tofile=f"{local_path} (remote/staged)",
+    )
+    sys.stdout.writelines(diff)
+
+
+def conflict_resolve(ref, mode, merged_file=None):
+    """Resolve a staged conflict.
+
+    --theirs   overwrite the local doc with the staged remote, clear the entry.
+    --mine     push the local doc over the remote (advancing past its version).
+    --merged   write a hand-merged file into the local doc, then push it.
+    """
+    doc_id, entry, remote_text = _resolve_conflict_ref(ref)
+    local_path = entry.get("local_path", "")
+
+    if mode == "theirs":
+        atomic_write(local_path, remote_text)
+        conflict_store.clear(doc_id)
+        print(f"specs: resolved {doc_id} with the remote copy ({local_path})")
+        return
+
+    # --mine / --merged both push the local side. The remote advanced past the
+    # local frontmatter's spec_version, so push with the staged remote version
+    # as the base (parsed from the staged remote text).
+    remote_meta, _ = parse_frontmatter(remote_text)
+    remote_version = remote_meta.get("spec_version")
+    if remote_version is None:
+        print("specs: staged remote has no spec_version — re-run pull", file=sys.stderr)
+        sys.exit(1)
+
+    if mode == "merged":
+        if not merged_file:
+            print("specs: --merged requires a file path", file=sys.stderr)
+            sys.exit(1)
+        try:
+            with open(merged_file, "r", encoding="utf-8") as f:
+                merged_content = f.read()
+        except (IOError, OSError) as e:
+            print(f"specs: cannot read merged file '{merged_file}' — {e}", file=sys.stderr)
+            sys.exit(1)
+        # Write the merged body into the local doc, preserving its identity
+        # frontmatter (spec_doc_id), so push() sends the merged content.
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                local_meta, _ = parse_frontmatter(f.read())
+        except (IOError, OSError):
+            local_meta = {}
+        merged_meta, merged_body = parse_frontmatter(merged_content)
+        # Caller may pass either a full doc or just a body; prefer the local
+        # identity fields, fall back to whatever the merged file carried.
+        local_meta.setdefault("spec_doc_id", merged_meta.get("spec_doc_id", doc_id))
+        atomic_write(local_path, render_frontmatter(local_meta, merged_body))
+
+    ok = push(local_path, base_version_override=remote_version)
+    if ok:
+        conflict_store.clear(doc_id)
+        print(f"specs: resolved {doc_id} with the local copy")
+    else:
+        print("specs: remote moved again — run 'specs-cli.py pull' then resolve once more.", file=sys.stderr)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# cleanup-synced-tree — purge legacy in-tree artifacts (feature 016)
+# ---------------------------------------------------------------------------
+
+def cleanup_synced_tree(dry_run=False, include_venv=False):
+    """Remove sync/build artifacts wrongly left inside the synced tree.
+
+    Targets: `*.remote` sidecars, OneDrive conflict copies, legacy
+    `.specs-trash/` dirs, and (with --include-venv) `_gen/.venv/` build dirs in
+    the wider libraries. Canonical docs, `_gen/*.py` scripts, and generated
+    outputs are never matched (classification is anchored in conflict_store).
+
+    Single-machine deletion loses the race against peers' session-start pulls,
+    so this prints a coordination warning — a durable purge needs peers'
+    OneDrive paused (or a server-side delete).
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+
+    # Roots: every configured specs path; with --include-venv also the wider
+    # synced libraries that sit beside the repo (files/, *-context/), reached
+    # via the project_root's siblings if present.
+    roots = [p["path"] for p in cfg["projects"]]
+    if include_venv:
+        project_root = cfg.get("project_root", "")
+        for name in ("files", "founders-files", "awolve-context",
+                     "founders-context", "handbook-context", "my-cortex"):
+            candidate = os.path.join(project_root, name)
+            if os.path.isdir(candidate) and candidate not in roots:
+                roots.append(candidate)
+
+    counts = {"remote_sidecar": 0, "conflict_copy": 0, "artifact_dir": 0}
+    targets = []  # (category, path, is_dir)
+    seen_roots = set()
+
+    for root in roots:
+        if not os.path.isdir(root) or root in seen_roots:
+            continue
+        seen_roots.add(root)
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Match artifact dirs and prune them from the walk so we don't
+            # descend into a .venv with thousands of files.
+            for d in list(dirnames):
+                # `.venv` only counts when --include-venv (it's a build dir,
+                # not a specs artifact); `.specs-trash` always counts.
+                if conflict_store.is_artifact_dir(d) and (include_venv or d == ".specs-trash"):
+                    targets.append(("artifact_dir", os.path.join(dirpath, d), True))
+                    counts["artifact_dir"] += 1
+                    dirnames.remove(d)
+            for fname in filenames:
+                cat = conflict_store.classify(fname, is_dir=False)
+                if cat:
+                    targets.append((cat, os.path.join(dirpath, fname), False))
+                    counts[cat] += 1
+
+    total = len(targets)
+    label = "Would remove" if dry_run else "Removed"
+    if total == 0:
+        print("specs: synced tree is clean — no artifacts found")
+        return
+
+    for cat, path, is_dir in targets:
+        if not dry_run:
+            try:
+                if is_dir:
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+            except OSError as e:
+                print(f"specs: could not remove {path} — {e}", file=sys.stderr)
+                continue
+        kind = "dir " if is_dir else "file"
+        print(f"  {kind} [{cat}] {path}")
+
+    print()
+    print(f"specs: {label} {total} artifact(s) — "
+          f"{counts['remote_sidecar']} .remote, "
+          f"{counts['conflict_copy']} conflict copies, "
+          f"{counts['artifact_dir']} dirs")
+    if not dry_run:
+        print()
+        print("  NOTE: single-machine deletion loses the race against peers' session-start", file=sys.stderr)
+        print("  pulls. For a durable purge, run with every peer's OneDrive paused (or", file=sys.stderr)
+        print("  delete server-side), then confirm with /cortex-doctor-content.", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -4243,6 +4547,53 @@ def main():
             print("Usage: specs-cli.py push <file_path>", file=sys.stderr)
             sys.exit(1)
         push(args[1])
+    elif cmd == "conflicts":
+        as_json = "--json" in args
+        project_filter = None
+        i = 1
+        while i < len(args):
+            a = args[i]
+            if a == "--project" and i + 1 < len(args):
+                project_filter = args[i + 1]; i += 2
+            elif not a.startswith("-") and project_filter is None:
+                project_filter = a; i += 1
+            else:
+                i += 1
+        list_conflicts_cmd(project_filter=project_filter, as_json=as_json)
+    elif cmd == "conflict":
+        sub = args[1] if len(args) > 1 else None
+        if sub == "show" and len(args) >= 3:
+            conflict_show(args[2])
+        elif sub == "diff" and len(args) >= 3:
+            conflict_diff(args[2])
+        elif sub == "resolve" and len(args) >= 3:
+            ref = args[2]
+            if "--theirs" in args:
+                conflict_resolve(ref, "theirs")
+            elif "--mine" in args:
+                conflict_resolve(ref, "mine")
+            elif "--merged" in args:
+                i = args.index("--merged")
+                if i + 1 >= len(args):
+                    print("specs: --merged requires a file path", file=sys.stderr)
+                    sys.exit(1)
+                conflict_resolve(ref, "merged", merged_file=args[i + 1])
+            else:
+                print("Usage: specs-cli.py conflict resolve <doc> --theirs|--mine|--merged <file>", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print(
+                "Usage:\n"
+                "  specs-cli.py conflict show <doc>\n"
+                "  specs-cli.py conflict diff <doc>\n"
+                "  specs-cli.py conflict resolve <doc> --theirs|--mine|--merged <file>",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    elif cmd == "cleanup-synced-tree":
+        dry_run = "--dry-run" in args
+        include_venv = "--include-venv" in args
+        cleanup_synced_tree(dry_run=dry_run, include_venv=include_venv)
     elif cmd == "status":
         show_status()
     elif cmd == "set-status":

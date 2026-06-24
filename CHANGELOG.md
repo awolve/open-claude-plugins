@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.0 — 2026-06-24
+
+**Keep sync sidecars & build artifacts out of the synced tree** (spec-service feature 016).
+
+`specs-cli.py pull` used to write conflict `.remote` sidecars and a `.specs-trash/` dir *inside* the OneDrive-synced specs tree. That tree is synced across 5+ machines, so every sidecar became fork-bait — OneDrive conflict-copied them with machine suffixes and peers re-uploaded after deletes, producing hundreds of junk files and wedging sync. All per-machine sync bookkeeping now lives in the per-machine cache (`~/Library/Caches/com.awolve.cortex/`, override `CORTEX_OFFLINE_CACHE`); the only files in the specs tree are canonical docs.
+
+- **New module `conflict_store.py`** — out-of-tree staging keyed by `doc_id` (`<cache>/specs/conflicts/<doc_id>.remote` + `index.json`) and trash relocation (`<cache>/specs/trash/<project_id>/`). Self-contained (stdlib only), unit-tested.
+- **`pull`** stages the remote side of a conflict in the cache (never beside your file), self-heals staged entries once a doc reconciles, relocates orphan trash to the cache, and migrates any legacy in-tree `.remote` sidecars into the store on first run. If the cache is unwritable it reports the conflict but never falls back to an in-tree write.
+- **New `conflict` commands** — `conflicts [project] [--json]` to list, `conflict show|diff <doc>`, and `conflict resolve <doc> --theirs|--mine|--merged <file>` (clears the staged copy; surfaces "remote moved again" on a 409).
+- **New `cleanup-synced-tree [--dry-run] [--include-venv]`** — purges legacy in-tree artifacts: `.remote`, OneDrive conflict copies, `.specs-trash/`, and (with `--include-venv`) `_gen/.venv/`. Canonical docs, `_gen/*.py`, and outputs are never matched (anchored classification, unit-tested against real accented machine names).
+- The session-start `pull` hook is unchanged — frequent pulls are now harmless because nothing lands in the synced tree.
+
+### Manual steps
+
+1. Update the plugin: `/awolve-spec:update-plugins` then `/reload-plugins`.
+2. The churn only fully stops once **all** machines update — until then `/cortex-doctor-content` flags any machine still depositing in-tree artifacts.
+3. One-time purge of existing junk: run `specs-cli.py cleanup-synced-tree --dry-run` to preview, then (with peers' OneDrive paused, or server-side) run it for real. Single-machine deletion loses the race against peers' session-start pulls.
+
 ## 0.18.0 — 2026-06-23
 
 **Support the new `ready_for_retest` bug status.**

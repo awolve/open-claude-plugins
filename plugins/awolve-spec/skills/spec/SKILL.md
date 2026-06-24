@@ -80,6 +80,10 @@ Full subcommand surface:
 |------------|---------|
 | `pull [project-id] [--prune\|--keep] [--force-full]` | Pull latest specs |
 | `push <file-path>` | Push a single spec file |
+| `conflicts [project-id] [--json]` | List sync conflicts staged out-of-tree (per-machine cache) |
+| `conflict show\|diff <doc>` | Inspect a staged conflict (`<doc>` = doc_id or local path) |
+| `conflict resolve <doc> --theirs\|--mine\|--merged <file>` | Resolve a conflict: take remote, push local, or push a merged file |
+| `cleanup-synced-tree [--dry-run] [--include-venv]` | Purge legacy in-tree sync/build artifacts (`.remote`, conflict copies, `.specs-trash/`, `_gen/.venv/`) |
 | `status` | Show sync status of local spec files |
 | `log <project-id\|--all> [--since DUR] [--json] [--since-last-visit] [--mark-read]` | Audit log stream |
 | `set-status <id> <status>` | Change feature or document status |
