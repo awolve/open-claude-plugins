@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.0 — 2026-06-25
+
+**Test-case `title` + richer `run-show`.** Cases gained a name distinct from the instruction (spec-service 0.35.0):
+
+- `case-add` / `case-update` take `--title`; `import-cases` matrices carry a `title` (or `name`) column / JSON key.
+- `run-show` now prints each case's **title** (falling back to the instruction) and its **prerequisites** (`↳ prereq: do first: … — …`).
+
 ## 0.22.0 — 2026-06-25
 
 **Full CLI parity with the Manual Test Runs API.** The `test` group now covers every API action, not just creation:

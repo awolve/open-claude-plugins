@@ -4532,7 +4532,12 @@ def test_run_show(run_id):
     for s in run.get("sections", []):
         print(f"\n  {s['name']}  (id={s['id']})")
         for c in by_section.get(s["id"], []):
-            print(f"    {c['caseKey']:<10} {c['whatYouDo'][:60]}")
+            print(f"    {c['caseKey']:<10} {(c.get('title') or c['whatYouDo'])[:60]}")
+            if c.get("prerequisite") or c.get("prerequisiteKeys"):
+                bits = []
+                if c.get("prerequisiteKeys"): bits.append(f"do first: {c['prerequisiteKeys']}")
+                if c.get("prerequisite"): bits.append(c["prerequisite"][:60])
+                print(f"               ↳ prereq: {' — '.join(bits)}")
     print(f"\n  testers: {len(run.get('testers', []))}")
 
 
@@ -4544,8 +4549,10 @@ def test_section_add(run_id, name, position):
     print(f"specs: section '{name}' added — id={s.get('id')}")
 
 
-def test_case_add(run_id, section_id, key, what, expected, feature_id, prerequisite=None, prereq_cases=None):
+def test_case_add(run_id, section_id, key, what, expected, feature_id, prerequisite=None, prereq_cases=None, title=None):
     data = {"sectionId": section_id, "caseKey": key, "whatYouDo": what, "expected": expected}
+    if title:
+        data["title"] = title
     if feature_id:
         data["featureId"] = feature_id
     if prerequisite:
@@ -4569,6 +4576,7 @@ def _parse_matrix(path):
                 "caseKey": r.get("caseKey") or r.get("case_id") or r.get("case"),
                 "whatYouDo": r.get("whatYouDo") or r.get("what_you_do") or r.get("what"),
                 "expected": r.get("expected"),
+                "title": r.get("title") or r.get("name"),
                 "prerequisite": r.get("prerequisite"),
                 "prerequisiteKeys": r.get("prerequisiteKeys") or r.get("prereqCases") or r.get("prereq_cases"),
             })
@@ -4597,6 +4605,8 @@ def _parse_matrix(path):
             "expected": col(parts, "expected"),
         }
         if all(row.values()):
+            ti = col(parts, "title", "name")
+            if ti: row["title"] = ti
             pq = col(parts, "prerequisite")
             pk = col(parts, "prerequisite_keys", "prereq_cases")
             if pq: row["prerequisite"] = pq
@@ -4681,6 +4691,7 @@ def test_section_reorder(run_id, ids_csv):
 def test_case_update(case_id, vals):
     body = {}
     if vals.get("--key"): body["caseKey"] = vals["--key"]
+    if vals.get("--title") is not None: body["title"] = vals["--title"]
     if vals.get("--what") is not None: body["whatYouDo"] = vals["--what"]
     if vals.get("--expected") is not None: body["expected"] = vals["--expected"]
     if vals.get("--section"): body["sectionId"] = vals["--section"]
@@ -4818,7 +4829,7 @@ def handle_test(args):
         args[1:],
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
-                     "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases"},
+                     "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title"},
         bool_flags={"--token", "--json", "--revoke", "--reissue"},
     )
     if sub == "run-create":
@@ -4846,7 +4857,7 @@ def handle_test(args):
     elif sub == "case-add":
         if not pos or not all(vals.get(k) for k in ("--section", "--key", "--what", "--expected")):
             print("Usage: specs-cli.py test case-add <run-id> --section <section-id> --key NAV-01 --what '..' --expected '..' [--feature <feature-id>]", file=sys.stderr); sys.exit(1)
-        test_case_add(pos[0], vals["--section"], vals["--key"], vals["--what"], vals["--expected"], vals.get("--feature"), vals.get("--prerequisite"), vals.get("--prereq-cases"))
+        test_case_add(pos[0], vals["--section"], vals["--key"], vals["--what"], vals["--expected"], vals.get("--feature"), vals.get("--prerequisite"), vals.get("--prereq-cases"), vals.get("--title"))
     elif sub == "import-cases":
         if len(pos) < 2:
             print("Usage: specs-cli.py test import-cases <run-id> <matrix.tsv|.csv|.json>", file=sys.stderr); sys.exit(1)
