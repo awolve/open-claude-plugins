@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.22.0 — 2026-06-25
+
+**Full CLI parity with the Manual Test Runs API.** The `test` group now covers every API action, not just creation:
+
+- **runs:** `run-delete` (was create/list/update/show only)
+- **sections:** `section-update` (rename/reposition), `section-delete`, `section-reorder`
+- **cases:** `case-update` (incl. the new `--prerequisite` / `--prereq-cases`), `case-delete`; `case-add` and `import-cases` now carry `prerequisite` + `prerequisiteKeys`
+- **images:** `image-list`, `image-add` (multipart upload, `--caption` / `--target do|expect`), `image-update`, `image-delete`
+- **testers:** `tester-list`, `tester-update` (`--revoke` / `--reissue`), `tester-delete`
+- **results:** `result-record` (`--status` / `--comment` / `--bug`; you must be a tester on the run)
+
+Run `specs-cli.py test` with no subcommand for the grouped command list.
+
 ## 0.21.0 — 2026-06-24
 
 **`test run-update` command.** Edit an existing test run from the CLI: `specs-cli.py test run-update <run-id> [--name ..] [--description ..] [--status draft|active|closed|archived] [--start YYYY-MM-DD] [--end YYYY-MM-DD]`. Covers the gap where the window/status could only be set at creation. Prints the updated run and its window.

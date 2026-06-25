@@ -4544,10 +4544,14 @@ def test_section_add(run_id, name, position):
     print(f"specs: section '{name}' added — id={s.get('id')}")
 
 
-def test_case_add(run_id, section_id, key, what, expected, feature_id):
+def test_case_add(run_id, section_id, key, what, expected, feature_id, prerequisite=None, prereq_cases=None):
     data = {"sectionId": section_id, "caseKey": key, "whatYouDo": what, "expected": expected}
     if feature_id:
         data["featureId"] = feature_id
+    if prerequisite:
+        data["prerequisite"] = prerequisite
+    if prereq_cases:
+        data["prerequisiteKeys"] = prereq_cases
     c = _test_request(f"/api/portal/test-runs/{run_id}/cases", "POST", data)
     print(f"specs: case {key} added — id={c.get('id')}")
 
@@ -4565,6 +4569,8 @@ def _parse_matrix(path):
                 "caseKey": r.get("caseKey") or r.get("case_id") or r.get("case"),
                 "whatYouDo": r.get("whatYouDo") or r.get("what_you_do") or r.get("what"),
                 "expected": r.get("expected"),
+                "prerequisite": r.get("prerequisite"),
+                "prerequisiteKeys": r.get("prerequisiteKeys") or r.get("prereqCases") or r.get("prereq_cases"),
             })
         return [r for r in out if all(r.get(k) for k in ("section", "caseKey", "whatYouDo", "expected"))]
     with open(path) as f:
@@ -4591,6 +4597,10 @@ def _parse_matrix(path):
             "expected": col(parts, "expected"),
         }
         if all(row.values()):
+            pq = col(parts, "prerequisite")
+            pk = col(parts, "prerequisite_keys", "prereq_cases")
+            if pq: row["prerequisite"] = pq
+            if pk: row["prerequisiteKeys"] = pk
             out.append(row)
     return out
 
@@ -4641,6 +4651,151 @@ def test_signoff(run_id, decision, note):
     print(f"specs: signed off test run — {s.get('decision')}")
 
 
+# ── runs / sections / cases — full CRUD parity with the API ──
+def test_run_delete(run_id):
+    _test_request(f"/api/portal/test-runs/{run_id}", "DELETE")
+    print("specs: test run deleted")
+
+
+def test_section_update(section_id, name, position):
+    body = {}
+    if name is not None: body["name"] = name
+    if position is not None: body["position"] = position
+    if not body:
+        print("specs: nothing to update (--name / --position)", file=sys.stderr); sys.exit(1)
+    s = _test_request(f"/api/portal/sections/{section_id}", "PATCH", body)
+    print(f"specs: section updated — {s.get('name')}")
+
+
+def test_section_delete(section_id):
+    _test_request(f"/api/portal/sections/{section_id}", "DELETE")
+    print("specs: section deleted")
+
+
+def test_section_reorder(run_id, ids_csv):
+    order = [x.strip() for x in ids_csv.split(",") if x.strip()]
+    _test_request(f"/api/portal/test-runs/{run_id}/sections", "PATCH", {"order": order})
+    print(f"specs: {len(order)} sections reordered")
+
+
+def test_case_update(case_id, vals):
+    body = {}
+    if vals.get("--key"): body["caseKey"] = vals["--key"]
+    if vals.get("--what") is not None: body["whatYouDo"] = vals["--what"]
+    if vals.get("--expected") is not None: body["expected"] = vals["--expected"]
+    if vals.get("--section"): body["sectionId"] = vals["--section"]
+    if vals.get("--feature") is not None: body["featureId"] = vals["--feature"]
+    if vals.get("--prerequisite") is not None: body["prerequisite"] = vals["--prerequisite"]
+    if vals.get("--prereq-cases") is not None: body["prerequisiteKeys"] = vals["--prereq-cases"]
+    if vals.get("--position"): body["position"] = int(vals["--position"])
+    if not body:
+        print("specs: nothing to update", file=sys.stderr); sys.exit(1)
+    c = _test_request(f"/api/portal/cases/{case_id}", "PATCH", body)
+    print(f"specs: case {c.get('caseKey')} updated")
+
+
+def test_case_delete(case_id):
+    _test_request(f"/api/portal/cases/{case_id}", "DELETE")
+    print("specs: case deleted")
+
+
+def test_result_record(case_id, status, comment, bug):
+    body = {"status": status}
+    if comment is not None: body["comment"] = comment
+    if bug is not None: body["bugNumber"] = bug
+    _test_request(f"/api/portal/cases/{case_id}/results", "POST", body)
+    print(f"specs: result recorded — {status}")
+
+
+# ── testers ──
+def test_tester_list(run_id):
+    testers = _test_request(f"/api/portal/test-runs/{run_id}/testers")
+    if not testers:
+        print("specs: no testers"); return
+    for t in testers:
+        extra = " (revoked)" if t.get("revokedAt") else ""
+        print(f"  {t.get('displayName',''):<24} [{t.get('kind','?'):<5}] recorded={t.get('recorded',0)}  id={t.get('id')}{extra}")
+
+
+def test_tester_update(tester_id, revoke, reissue):
+    body = {}
+    if revoke: body["revoke"] = True
+    if reissue: body["reissue"] = True
+    if not body:
+        print("specs: pass --revoke or --reissue", file=sys.stderr); sys.exit(1)
+    t = _test_request(f"/api/portal/testers/{tester_id}", "PATCH", body)
+    print(f"specs: tester '{t.get('displayName')}' updated")
+    if t.get("link"):
+        print(f"  link: {t['link']}")
+
+
+def test_tester_delete(tester_id):
+    _test_request(f"/api/portal/testers/{tester_id}", "DELETE")
+    print("specs: tester removed")
+
+
+# ── case reference images ──
+def test_image_list(case_id):
+    imgs = _test_request(f"/api/portal/cases/{case_id}/attachments")
+    if not imgs:
+        print("specs: no reference images"); return
+    for im in imgs:
+        side = im.get("target") or "expect"
+        print(f"  [{side:<6}] {im.get('caption') or im.get('filename')}  id={im.get('id')}")
+
+
+def test_image_update(case_id, att_id, caption, target):
+    body = {}
+    if caption is not None: body["caption"] = caption
+    if target is not None: body["target"] = target
+    if not body:
+        print("specs: pass --caption or --target", file=sys.stderr); sys.exit(1)
+    _test_request(f"/api/portal/cases/{case_id}/attachments/{att_id}", "PATCH", body)
+    print("specs: image updated")
+
+
+def test_image_delete(case_id, att_id):
+    _test_request(f"/api/portal/cases/{case_id}/attachments/{att_id}", "DELETE")
+    print("specs: image deleted")
+
+
+def test_image_add(case_id, file_path, caption, target):
+    import uuid as _uuid, mimetypes as _mt
+    if not os.path.isfile(file_path):
+        print(f"specs: file not found: {file_path}", file=sys.stderr); sys.exit(1)
+    _, headers, service_url = _init_and_auth()
+    boundary = f"----awolve-spec-{_uuid.uuid4().hex}"
+    fname = os.path.basename(file_path)
+    ctype = _mt.guess_type(file_path)[0] or "application/octet-stream"
+    with open(file_path, "rb") as f:
+        filedata = f.read()
+    parts = []
+    def field(name, value):
+        parts.extend([f"--{boundary}".encode(), f'Content-Disposition: form-data; name="{name}"'.encode(), b"", str(value).encode()])
+    if caption: field("caption", caption)
+    if target: field("target", target)
+    parts.extend([
+        f"--{boundary}".encode(),
+        f'Content-Disposition: form-data; name="file"; filename="{fname}"'.encode(),
+        f"Content-Type: {ctype}".encode(), b"", filedata,
+        f"--{boundary}--".encode(), b"",
+    ])
+    body = b"\r\n".join(parts)
+    h = dict(headers)
+    h["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+    h["Content-Length"] = str(len(body))
+    req = urllib.request.Request(f"{service_url}/api/portal/cases/{case_id}/attachments", data=body, headers=h, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            status, rb = resp.status, resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        print(f"specs: upload failed (HTTP {e.code}): {e.read().decode('utf-8')[:200]}", file=sys.stderr); sys.exit(1)
+    if status not in (200, 201):
+        print(f"specs: upload failed (HTTP {status})", file=sys.stderr); sys.exit(1)
+    im = json.loads(rb) if rb else {}
+    print(f"specs: image added — id={im.get('id')} [{im.get('target') or 'expect'}]")
+
+
 def _parse_flags(rest, value_flags, bool_flags=()):
     """Split a token list into positionals, --flag values, and present --bools."""
     vals, bools, pos, i = {}, set(), [], 0
@@ -4662,8 +4817,9 @@ def handle_test(args):
     pos, vals, bools = _parse_flags(
         args[1:],
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
-                     "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status"},
-        bool_flags={"--token", "--json"},
+                     "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
+                     "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases"},
+        bool_flags={"--token", "--json", "--revoke", "--reissue"},
     )
     if sub == "run-create":
         if not pos or not vals.get("--name"):
@@ -4690,7 +4846,7 @@ def handle_test(args):
     elif sub == "case-add":
         if not pos or not all(vals.get(k) for k in ("--section", "--key", "--what", "--expected")):
             print("Usage: specs-cli.py test case-add <run-id> --section <section-id> --key NAV-01 --what '..' --expected '..' [--feature <feature-id>]", file=sys.stderr); sys.exit(1)
-        test_case_add(pos[0], vals["--section"], vals["--key"], vals["--what"], vals["--expected"], vals.get("--feature"))
+        test_case_add(pos[0], vals["--section"], vals["--key"], vals["--what"], vals["--expected"], vals.get("--feature"), vals.get("--prerequisite"), vals.get("--prereq-cases"))
     elif sub == "import-cases":
         if len(pos) < 2:
             print("Usage: specs-cli.py test import-cases <run-id> <matrix.tsv|.csv|.json>", file=sys.stderr); sys.exit(1)
@@ -4707,8 +4863,56 @@ def handle_test(args):
         if not pos or not vals.get("--decision"):
             print("Usage: specs-cli.py test signoff <run-id> --decision accepted|accepted_with_conditions|rejected [--note ..]", file=sys.stderr); sys.exit(1)
         test_signoff(pos[0], vals["--decision"], vals.get("--note"))
+    elif sub == "run-delete":
+        if not pos: print("Usage: specs-cli.py test run-delete <run-id>", file=sys.stderr); sys.exit(1)
+        test_run_delete(pos[0])
+    elif sub == "section-update":
+        if not pos: print("Usage: specs-cli.py test section-update <section-id> [--name ..] [--position N]", file=sys.stderr); sys.exit(1)
+        test_section_update(pos[0], vals.get("--name"), int(vals["--position"]) if vals.get("--position") else None)
+    elif sub == "section-delete":
+        if not pos: print("Usage: specs-cli.py test section-delete <section-id>", file=sys.stderr); sys.exit(1)
+        test_section_delete(pos[0])
+    elif sub == "section-reorder":
+        if len(pos) < 2: print("Usage: specs-cli.py test section-reorder <run-id> <section-id1,section-id2,...>", file=sys.stderr); sys.exit(1)
+        test_section_reorder(pos[0], pos[1])
+    elif sub == "case-update":
+        if not pos: print("Usage: specs-cli.py test case-update <case-id> [--key ..] [--what ..] [--expected ..] [--prerequisite ..] [--prereq-cases ..] [--section ..] [--feature ..] [--position N]", file=sys.stderr); sys.exit(1)
+        test_case_update(pos[0], vals)
+    elif sub == "case-delete":
+        if not pos: print("Usage: specs-cli.py test case-delete <case-id>", file=sys.stderr); sys.exit(1)
+        test_case_delete(pos[0])
+    elif sub == "result-record":
+        if not pos or not vals.get("--status"): print("Usage: specs-cli.py test result-record <case-id> --status ok|ok_with_bug|fail|blocked|na [--comment ..] [--bug ..]  (you must be a tester on the run)", file=sys.stderr); sys.exit(1)
+        test_result_record(pos[0], vals["--status"], vals.get("--comment"), vals.get("--bug"))
+    elif sub == "tester-list":
+        if not pos: print("Usage: specs-cli.py test tester-list <run-id>", file=sys.stderr); sys.exit(1)
+        test_tester_list(pos[0])
+    elif sub == "tester-update":
+        if not pos: print("Usage: specs-cli.py test tester-update <tester-id> (--revoke | --reissue)", file=sys.stderr); sys.exit(1)
+        test_tester_update(pos[0], "--revoke" in bools, "--reissue" in bools)
+    elif sub == "tester-delete":
+        if not pos: print("Usage: specs-cli.py test tester-delete <tester-id>", file=sys.stderr); sys.exit(1)
+        test_tester_delete(pos[0])
+    elif sub == "image-list":
+        if not pos: print("Usage: specs-cli.py test image-list <case-id>", file=sys.stderr); sys.exit(1)
+        test_image_list(pos[0])
+    elif sub == "image-add":
+        if len(pos) < 2: print("Usage: specs-cli.py test image-add <case-id> <file> [--caption ..] [--target do|expect]", file=sys.stderr); sys.exit(1)
+        test_image_add(pos[0], pos[1], vals.get("--caption"), vals.get("--target"))
+    elif sub == "image-update":
+        if len(pos) < 2: print("Usage: specs-cli.py test image-update <case-id> <attachment-id> [--caption ..] [--target do|expect]", file=sys.stderr); sys.exit(1)
+        test_image_update(pos[0], pos[1], vals.get("--caption"), vals.get("--target"))
+    elif sub == "image-delete":
+        if len(pos) < 2: print("Usage: specs-cli.py test image-delete <case-id> <attachment-id>", file=sys.stderr); sys.exit(1)
+        test_image_delete(pos[0], pos[1])
     else:
-        print("Usage: specs-cli.py test <run-create|run-list|run-update|run-show|section-add|case-add|import-cases|tester-add|coverage|signoff> ...", file=sys.stderr)
+        print("Usage: specs-cli.py test <subcommand> ...\n"
+              "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | signoff\n"
+              "  sections: section-add | section-update | section-delete | section-reorder\n"
+              "  cases:    case-add | case-update | case-delete | import-cases\n"
+              "  images:   image-list | image-add | image-update | image-delete\n"
+              "  testers:  tester-add | tester-list | tester-update | tester-delete\n"
+              "  results:  result-record", file=sys.stderr)
         sys.exit(1)
 
 
