@@ -4523,8 +4523,24 @@ def test_run_list(project, run_type):
               f"({r.get('caseCount',0)} cases, {r.get('testerCount',0)} testers)  id={r['id']}")
 
 
-def test_run_show(run_id):
+def test_run_show(run_id, as_json=False):
     run = _test_request(f"/api/portal/test-runs/{run_id}")
+    if as_json:
+        # Full round-trip dump as a re-importable matrix: section name + title +
+        # prerequisite text + derived prerequisiteKeys (the dep edges), so a run
+        # can be exported, its case text edited, and re-imported without loss.
+        names = {s["id"]: s["name"] for s in run.get("sections", [])}
+        cases = [{
+            "section": names.get(c["sectionId"], c["sectionId"]),
+            "caseKey": c["caseKey"],
+            "title": c.get("title"),
+            "whatYouDo": c["whatYouDo"],
+            "expected": c["expected"],
+            "prerequisite": c.get("prerequisite"),
+            "prerequisiteKeys": c.get("prerequisiteKeys"),
+        } for c in run.get("cases", [])]
+        print(json.dumps({"cases": cases}, ensure_ascii=False, indent=2))
+        return
     print(f"#{run['number']} {run['name']} [{run['type']}] — {run['status']}")
     by_section = {}
     for c in run.get("cases", []):
@@ -4848,8 +4864,8 @@ def handle_test(args):
                         vals.get("--status"), vals.get("--start"), vals.get("--end"))
     elif sub == "run-show":
         if not pos:
-            print("Usage: specs-cli.py test run-show <run-id>", file=sys.stderr); sys.exit(1)
-        test_run_show(pos[0])
+            print("Usage: specs-cli.py test run-show <run-id> [--json]", file=sys.stderr); sys.exit(1)
+        test_run_show(pos[0], as_json="--json" in bools)
     elif sub == "section-add":
         if not pos or not vals.get("--name"):
             print("Usage: specs-cli.py test section-add <run-id> --name <name> [--position N]", file=sys.stderr); sys.exit(1)

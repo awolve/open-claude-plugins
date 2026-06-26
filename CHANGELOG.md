@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 — 2026-06-26
+
+**`test run-show <run-id> --json`.** Dumps the full run as a re-importable JSON matrix — section name, caseKey, title, whatYouDo, expected, prerequisite text, and derived prerequisiteKeys (the dep edges). This closes the round-trip loop with `import-cases`: export a run, edit the case text in bulk, and re-import without losing titles, structure, or prerequisite edges. (Used to rewrite all 111 Medvind UAT guided-flow cases into richer, bullet-based markdown.)
+
 ## 0.23.0 — 2026-06-25
 
 **Test-case `title` + richer `run-show`.** Cases gained a name distinct from the instruction (spec-service 0.35.0):
