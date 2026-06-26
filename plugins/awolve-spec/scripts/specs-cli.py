@@ -4677,6 +4677,16 @@ def test_signoff(run_id, decision, note):
     print(f"specs: signed off test run — {s.get('decision')}")
 
 
+def test_reset(run_id, tester_id=None):
+    """Reset recorded results — whole run (no tester) or one tester. Destructive."""
+    data = {"testerId": tester_id} if tester_id else {}
+    r = _test_request(f"/api/portal/test-runs/{run_id}/reset", "POST", data)
+    scope = f"tester {tester_id}" if tester_id else "whole run"
+    extra = ", sign-off cleared" if r.get("signoffCleared") else ""
+    print(f"specs: reset {scope} — cleared {r.get('results',0)} result(s), {r.get('photos',0)} photo(s); "
+          f"{r.get('testersReset',0)} tester(s) re-started{extra}")
+
+
 # ── runs / sections / cases — full CRUD parity with the API ──
 def test_run_delete(run_id):
     _test_request(f"/api/portal/test-runs/{run_id}", "DELETE")
@@ -4846,7 +4856,7 @@ def handle_test(args):
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
                      "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title"},
-        bool_flags={"--token", "--json", "--revoke", "--reissue"},
+        bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes"},
     )
     if sub == "run-create":
         if not pos or not vals.get("--name"):
@@ -4911,6 +4921,14 @@ def handle_test(args):
     elif sub == "result-record":
         if not pos or not vals.get("--status"): print("Usage: specs-cli.py test result-record <case-id> --status ok|ok_with_bug|fail|blocked|na [--comment ..] [--bug ..]  (you must be a tester on the run)", file=sys.stderr); sys.exit(1)
         test_result_record(pos[0], vals["--status"], vals.get("--comment"), vals.get("--bug"))
+    elif sub == "reset-run":
+        if not pos: print("Usage: specs-cli.py test reset-run <run-id> --yes   (deletes ALL results + photos, re-starts every tester, clears sign-off)", file=sys.stderr); sys.exit(1)
+        if "--yes" not in bools: print("specs: reset-run is destructive (deletes ALL results + photos, clears sign-off) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
+        test_reset(pos[0])
+    elif sub == "reset-tester":
+        if len(pos) < 2: print("Usage: specs-cli.py test reset-tester <run-id> <tester-id> --yes   (deletes that tester's results + photos, re-starts them)", file=sys.stderr); sys.exit(1)
+        if "--yes" not in bools: print("specs: reset-tester is destructive (deletes that tester's results + photos) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
+        test_reset(pos[0], pos[1])
     elif sub == "tester-list":
         if not pos: print("Usage: specs-cli.py test tester-list <run-id>", file=sys.stderr); sys.exit(1)
         test_tester_list(pos[0])
@@ -4939,7 +4957,8 @@ def handle_test(args):
               "  cases:    case-add | case-update | case-delete | import-cases\n"
               "  images:   image-list | image-add | image-update | image-delete\n"
               "  testers:  tester-add | tester-list | tester-update | tester-delete\n"
-              "  results:  result-record", file=sys.stderr)
+              "  results:  result-record\n"
+              "  reset:    reset-run <run-id> --yes | reset-tester <run-id> <tester-id> --yes", file=sys.stderr)
         sys.exit(1)
 
 

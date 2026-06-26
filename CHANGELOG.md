@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.0 — 2026-06-26
+
+**`test reset-run` / `test reset-tester`.** Reset recorded results for a manual test run so it can be re-run from scratch — deletes results + evidence photos, re-starts the affected testers, and (whole-run) clears the sign-off. Both are destructive and require `--yes`:
+
+- `specs-cli.py test reset-run <run-id> --yes` — whole run (all testers + sign-off).
+- `specs-cli.py test reset-tester <run-id> <tester-id> --yes` — one tester only.
+
+Requires spec-service ≥ 0.40.0 (the `POST /test-runs/:id/reset` endpoint).
+
 ## 0.24.0 — 2026-06-26
 
 **`test run-show <run-id> --json`.** Dumps the full run as a re-importable JSON matrix — section name, caseKey, title, whatYouDo, expected, prerequisite text, and derived prerequisiteKeys (the dep edges). This closes the round-trip loop with `import-cases`: export a run, edit the case text in bulk, and re-import without losing titles, structure, or prerequisite edges. (Used to rewrite all 111 Medvind UAT guided-flow cases into richer, bullet-based markdown.)
