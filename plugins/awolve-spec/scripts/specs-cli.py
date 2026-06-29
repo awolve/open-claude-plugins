@@ -4595,6 +4595,7 @@ def _parse_matrix(path):
                 "title": r.get("title") or r.get("name"),
                 "prerequisite": r.get("prerequisite"),
                 "prerequisiteKeys": r.get("prerequisiteKeys") or r.get("prereqCases") or r.get("prereq_cases"),
+                "roles": r.get("roles"),  # list of role names (spec 018), optional
             })
         return [r for r in out if all(r.get(k) for k in ("section", "caseKey", "whatYouDo", "expected"))]
     with open(path) as f:
@@ -4627,6 +4628,8 @@ def _parse_matrix(path):
             pk = col(parts, "prerequisite_keys", "prereq_cases")
             if pq: row["prerequisite"] = pq
             if pk: row["prerequisiteKeys"] = pk
+            rl = col(parts, "roles")  # role names separated by ';' (spec 018)
+            if rl: row["roles"] = [x.strip() for x in rl.split(";") if x.strip()]
             out.append(row)
     return out
 
@@ -4637,8 +4640,9 @@ def test_import_cases(run_id, path):
         print("specs: no rows parsed from the matrix (need columns: section, case_id, what_you_do, expected)", file=sys.stderr)
         sys.exit(1)
     res = _test_request(f"/api/portal/test-runs/{run_id}/import", "POST", {"cases": rows})
+    extra = f", {res['rolesCreated']} new roles" if res.get("rolesCreated") else ""
     print(f"specs: imported — {res.get('casesNew',0)} new, {res.get('casesUpdated',0)} updated, "
-          f"{res.get('sectionsCreated',0)} new sections")
+          f"{res.get('sectionsCreated',0)} new sections{extra}")
 
 
 def test_tester_add(run_id, name, user_email, as_token):
@@ -4665,6 +4669,10 @@ def test_coverage(run_id):
     print(f"#{cov['run']['number']} {cov['run']['name']} — {o['covered']}/{o['totalCases']} covered, {o['withFail']} with a fail")
     for s in cov.get("sections", []):
         print(f"  {s['name'][:40]:<40} {s['covered']}/{s['totalCases']} covered, {s['withFail']} fail, {s['pending']} pending")
+    if cov.get("byRole"):
+        print("  by role:")
+        for r in cov["byRole"]:
+            print(f"    {r['name'][:38]:<38} {r['covered']}/{r['totalCases']} covered, {r['withFail']} fail, {r['pending']} pending")
     if cov.get("signoff"):
         print(f"  sign-off: {cov['signoff']['decision']} by {cov['signoff']['signedBy']}")
 
@@ -4734,6 +4742,77 @@ def test_case_update(case_id, vals):
 def test_case_delete(case_id):
     _test_request(f"/api/portal/cases/{case_id}", "DELETE")
     print("specs: case deleted")
+
+
+# ── roles (spec 018) ──
+def test_role_add(run_id, name, description=None, key=None):
+    data = {"name": name}
+    if description: data["description"] = description
+    if key: data["key"] = key
+    r = _test_request(f"/api/portal/test-runs/{run_id}/roles", "POST", data)
+    print(f"specs: role '{r.get('name')}' added — id={r.get('id')} key={r.get('key')}")
+
+
+def test_role_seed(run_id):
+    r = _test_request(f"/api/portal/test-runs/{run_id}/roles", "POST", {"seed": True})
+    print(f"specs: seeded {r.get('created', 0)} role(s) from project templates")
+
+
+def test_role_list(run_id):
+    roles = _test_request(f"/api/portal/test-runs/{run_id}/roles")
+    if not roles:
+        print("specs: no roles"); return
+    for r in roles:
+        desc = f" — {r['description']}" if r.get("description") else ""
+        print(f"  {str(r.get('key')):<20} {r.get('name')}{desc}  id={r.get('id')}")
+
+
+def test_role_rename(role_id, name=None, description=None, key=None):
+    body = {}
+    if name is not None: body["name"] = name
+    if description is not None: body["description"] = description
+    if key: body["key"] = key
+    if not body:
+        print("specs: nothing to update (--name / --description / --key)", file=sys.stderr); sys.exit(1)
+    r = _test_request(f"/api/portal/roles/{role_id}", "PATCH", body)
+    print(f"specs: role updated — {r.get('name')}")
+
+
+def test_role_remove(role_id):
+    _test_request(f"/api/portal/roles/{role_id}", "DELETE")
+    print("specs: role removed")
+
+
+def test_case_roles(case_id, role_ids_csv):
+    ids = [x.strip() for x in role_ids_csv.split(",") if x.strip()]
+    _test_request(f"/api/portal/cases/{case_id}/roles", "PUT", {"roleIds": ids})
+    print(f"specs: set {len(ids)} role(s) on case")
+
+
+def test_role_identity_set(run_id, role_id, scope, kind, scope_ref=None, environment=None, account_ref=None, template=None):
+    data = {"roleId": role_id, "scope": scope, "kind": kind}
+    if scope_ref: data["scopeRef"] = scope_ref
+    if environment: data["environment"] = environment
+    if account_ref: data["accountRef"] = account_ref
+    if template: data["generateTemplate"] = template
+    b = _test_request(f"/api/portal/test-runs/{run_id}/role-identities", "POST", data)
+    print(f"specs: identity binding added — id={b.get('id')} ({scope}/{kind})")
+
+
+def test_role_template_add(project, name, description=None, key=None):
+    data = {"name": name}
+    if description: data["description"] = description
+    if key: data["key"] = key
+    r = _test_request(f"/api/portal/projects/{project}/test-roles", "POST", data)
+    print(f"specs: project role template '{r.get('name')}' added — key={r.get('key')}")
+
+
+def test_role_template_list(project):
+    roles = _test_request(f"/api/portal/projects/{project}/test-roles")
+    if not roles:
+        print("specs: no project role templates"); return
+    for r in roles:
+        print(f"  {str(r.get('key')):<20} {r.get('name')}")
 
 
 def test_result_record(case_id, status, comment, bug):
@@ -4855,7 +4934,8 @@ def handle_test(args):
         args[1:],
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
-                     "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title"},
+                     "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title",
+                     "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template"},
         bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes"},
     )
     if sub == "run-create":
@@ -4950,6 +5030,37 @@ def handle_test(args):
     elif sub == "image-delete":
         if len(pos) < 2: print("Usage: specs-cli.py test image-delete <case-id> <attachment-id>", file=sys.stderr); sys.exit(1)
         test_image_delete(pos[0], pos[1])
+    elif sub == "role-add":
+        if not pos or not vals.get("--name"):
+            print("Usage: specs-cli.py test role-add <run-id> --name <name> [--description ..] [--key ..]", file=sys.stderr); sys.exit(1)
+        test_role_add(pos[0], vals["--name"], vals.get("--description"), vals.get("--key"))
+    elif sub == "role-seed":
+        if not pos: print("Usage: specs-cli.py test role-seed <run-id>  (copy project role templates into the run)", file=sys.stderr); sys.exit(1)
+        test_role_seed(pos[0])
+    elif sub == "role-list":
+        if not pos: print("Usage: specs-cli.py test role-list <run-id>", file=sys.stderr); sys.exit(1)
+        test_role_list(pos[0])
+    elif sub == "role-rename":
+        if not pos: print("Usage: specs-cli.py test role-rename <role-id> [--name ..] [--description ..] [--key ..]", file=sys.stderr); sys.exit(1)
+        test_role_rename(pos[0], vals.get("--name"), vals.get("--description"), vals.get("--key"))
+    elif sub == "role-remove":
+        if not pos: print("Usage: specs-cli.py test role-remove <role-id>", file=sys.stderr); sys.exit(1)
+        test_role_remove(pos[0])
+    elif sub == "case-roles":
+        if len(pos) < 2: print("Usage: specs-cli.py test case-roles <case-id> <role-id1,role-id2,...>", file=sys.stderr); sys.exit(1)
+        test_case_roles(pos[0], pos[1])
+    elif sub == "role-identity-set":
+        if len(pos) < 2 or not vals.get("--scope") or not vals.get("--kind"):
+            print("Usage: specs-cli.py test role-identity-set <run-id> <role-id> --scope environment|tester|case --kind account|generated "
+                  "[--scope-ref ID] [--environment staging] [--account-ref <kv-label>] [--template 'cand+{run}-{n}@x']", file=sys.stderr); sys.exit(1)
+        test_role_identity_set(pos[0], pos[1], vals["--scope"], vals["--kind"], vals.get("--scope-ref"), vals.get("--environment"), vals.get("--account-ref"), vals.get("--template"))
+    elif sub == "role-template-add":
+        if not pos or not vals.get("--name"):
+            print("Usage: specs-cli.py test role-template-add <project> --name <name> [--description ..] [--key ..]", file=sys.stderr); sys.exit(1)
+        test_role_template_add(pos[0], vals["--name"], vals.get("--description"), vals.get("--key"))
+    elif sub == "role-template-list":
+        if not pos: print("Usage: specs-cli.py test role-template-list <project>", file=sys.stderr); sys.exit(1)
+        test_role_template_list(pos[0])
     else:
         print("Usage: specs-cli.py test <subcommand> ...\n"
               "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | signoff\n"
@@ -4957,6 +5068,8 @@ def handle_test(args):
               "  cases:    case-add | case-update | case-delete | import-cases\n"
               "  images:   image-list | image-add | image-update | image-delete\n"
               "  testers:  tester-add | tester-list | tester-update | tester-delete\n"
+              "  roles:    role-add | role-list | role-rename | role-remove | role-seed | case-roles |\n"
+              "            role-identity-set | role-template-add | role-template-list\n"
               "  results:  result-record\n"
               "  reset:    reset-run <run-id> --yes | reset-tester <run-id> <tester-id> --yes", file=sys.stderr)
         sys.exit(1)

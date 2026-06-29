@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.26.0 — 2026-06-29
+
+**Test roles (spec-service 018).** The `test` group gained role management:
+
+- **roles:** `role-add`, `role-list`, `role-rename`, `role-remove`, `role-seed` (copy project role templates into a run)
+- **assignment:** `case-roles <case-id> <role-id,…>` (sets the case's roles; cardinality is the single-vs-"open" signal)
+- **identity:** `role-identity-set <run-id> <role-id> --scope environment|tester|case --kind account|generated [--scope-ref ID] [--environment staging] [--account-ref <kv-label>] [--template 'cand+{run}-{n}@x']`
+- **templates:** `role-template-add`, `role-template-list` (reusable per-project roles)
+- `import-cases` matrices may carry a `roles` column (`;`-separated names) / JSON `roles`; `coverage` now prints a per-role breakdown.
+
+Requires spec-service with the spec-018 endpoints deployed (the role commands 404 until then).
+
 ## 0.25.0 — 2026-06-26
 
 **`test reset-run` / `test reset-tester`.** Reset recorded results for a manual test run so it can be re-run from scratch — deletes results + evidence photos, re-starts the affected testers, and (whole-run) clears the sign-off. Both are destructive and require `--yes`:
