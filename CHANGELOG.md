@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.27.0 — 2026-06-29
+
+**Re-test requests (spec-service 0.44.0).** The `test` group can flag a case for re-test during a UAT:
+
+- `test retest <case-id> [--note '..']` — flag the whole case for re-test; emails every tester who recorded it and has an address.
+- `test retest-clear <case-id>` — clear an open re-test request.
+- `tester-add … --email <addr>` — store an email on a token tester so they can be notified.
+
+Requires spec-service ≥ 0.44.0 deployed (the commands 404 until then).
+
 ## 0.26.0 — 2026-06-29
 
 **Test roles (spec-service 018).** The `test` group gained role management:

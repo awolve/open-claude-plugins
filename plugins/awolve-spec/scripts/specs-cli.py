@@ -4645,7 +4645,7 @@ def test_import_cases(run_id, path):
           f"{res.get('sectionsCreated',0)} new sections{extra}")
 
 
-def test_tester_add(run_id, name, user_email, as_token):
+def test_tester_add(run_id, name, user_email, as_token, email=None):
     if user_email and not as_token:
         data = {"kind": "user", "email": user_email}
     else:
@@ -4653,6 +4653,8 @@ def test_tester_add(run_id, name, user_email, as_token):
             print("specs: token tester needs --name", file=sys.stderr)
             sys.exit(1)
         data = {"kind": "token", "displayName": name}
+        if email:
+            data["email"] = email
     t = _test_request(f"/api/portal/test-runs/{run_id}/testers", "POST", data)
     if t.get("link"):
         cfg = config.read_config()
@@ -4815,6 +4817,18 @@ def test_role_template_list(project):
         print(f"  {str(r.get('key')):<20} {r.get('name')}")
 
 
+# ── re-test (spec 015 follow-up) ──
+def test_retest(case_id, note=None):
+    r = _test_request(f"/api/portal/cases/{case_id}/retest", "POST", {"note": note})
+    extra = f", {len(r.get('skipped', []))} without an email" if r.get("skipped") else ""
+    print(f"specs: re-test requested — {r.get('notified', 0)} tester(s) emailed{extra}")
+
+
+def test_retest_clear(case_id):
+    _test_request(f"/api/portal/cases/{case_id}/retest", "DELETE")
+    print("specs: re-test request cleared")
+
+
 def test_result_record(case_id, status, comment, bug):
     body = {"status": status}
     if comment is not None: body["comment"] = comment
@@ -4935,7 +4949,7 @@ def handle_test(args):
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
                      "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title",
-                     "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template"},
+                     "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template", "--email"},
         bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes"},
     )
     if sub == "run-create":
@@ -4970,8 +4984,8 @@ def handle_test(args):
         test_import_cases(pos[0], pos[1])
     elif sub == "tester-add":
         if not pos:
-            print("Usage: specs-cli.py test tester-add <run-id> (--user <email> | --name '<Name>' --token)", file=sys.stderr); sys.exit(1)
-        test_tester_add(pos[0], vals.get("--name"), vals.get("--user"), "--token" in bools)
+            print("Usage: specs-cli.py test tester-add <run-id> (--user <email> | --name '<Name>' --token [--email <addr>])", file=sys.stderr); sys.exit(1)
+        test_tester_add(pos[0], vals.get("--name"), vals.get("--user"), "--token" in bools, vals.get("--email"))
     elif sub == "coverage":
         if not pos:
             print("Usage: specs-cli.py test coverage <run-id>", file=sys.stderr); sys.exit(1)
@@ -5061,6 +5075,12 @@ def handle_test(args):
     elif sub == "role-template-list":
         if not pos: print("Usage: specs-cli.py test role-template-list <project>", file=sys.stderr); sys.exit(1)
         test_role_template_list(pos[0])
+    elif sub == "retest":
+        if not pos: print("Usage: specs-cli.py test retest <case-id> [--note '..']  (flags the whole case + emails testers)", file=sys.stderr); sys.exit(1)
+        test_retest(pos[0], vals.get("--note"))
+    elif sub == "retest-clear":
+        if not pos: print("Usage: specs-cli.py test retest-clear <case-id>", file=sys.stderr); sys.exit(1)
+        test_retest_clear(pos[0])
     else:
         print("Usage: specs-cli.py test <subcommand> ...\n"
               "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | signoff\n"
@@ -5070,6 +5090,7 @@ def handle_test(args):
               "  testers:  tester-add | tester-list | tester-update | tester-delete\n"
               "  roles:    role-add | role-list | role-rename | role-remove | role-seed | case-roles |\n"
               "            role-identity-set | role-template-add | role-template-list\n"
+              "  re-test:  retest <case-id> [--note ..] | retest-clear <case-id>\n"
               "  results:  result-record\n"
               "  reset:    reset-run <run-id> --yes | reset-tester <run-id> <tester-id> --yes", file=sys.stderr)
         sys.exit(1)
