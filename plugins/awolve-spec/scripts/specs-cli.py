@@ -4665,10 +4665,15 @@ def test_tester_add(run_id, name, user_email, as_token, email=None):
         print(f"specs: tester '{t.get('displayName')}' added — id={t.get('id')}")
 
 
-def test_coverage(run_id):
-    cov = _test_request(f"/api/portal/test-runs/{run_id}/coverage")
+def test_coverage(run_id, execution=None):
+    q = f"?execution={execution}" if execution else ""
+    cov = _test_request(f"/api/portal/test-runs/{run_id}/coverage{q}")
     o = cov["overall"]
-    print(f"#{cov['run']['number']} {cov['run']['name']} — {o['covered']}/{o['totalCases']} covered, {o['withFail']} with a fail")
+    e = cov.get("execution")
+    run_lbl = f"#{cov['run']['number']} {cov['run']['name']}"
+    if e:
+        run_lbl += f" — run #{e['number']}{(' ' + e['label']) if e.get('label') else ''} ({e['status']})"
+    print(f"{run_lbl} — {o['covered']}/{o['totalCases']} covered, {o['withFail']} with a fail")
     for s in cov.get("sections", []):
         print(f"  {s['name'][:40]:<40} {s['covered']}/{s['totalCases']} covered, {s['withFail']} fail, {s['pending']} pending")
     if cov.get("byRole"):
@@ -4687,14 +4692,38 @@ def test_signoff(run_id, decision, note):
     print(f"specs: signed off test run — {s.get('decision')}")
 
 
-def test_reset(run_id, tester_id=None):
-    """Reset recorded results — whole run (no tester) or one tester. Destructive."""
-    data = {"testerId": tester_id} if tester_id else {}
+def test_reset(run_id, tester_id=None, execution=None):
+    """Reset recorded results for a run instance — whole run (no tester) or one tester. Destructive."""
+    data = {}
+    if tester_id: data["testerId"] = tester_id
+    if execution: data["executionId"] = execution
     r = _test_request(f"/api/portal/test-runs/{run_id}/reset", "POST", data)
     scope = f"tester {tester_id}" if tester_id else "whole run"
     extra = ", sign-off cleared" if r.get("signoffCleared") else ""
     print(f"specs: reset {scope} — cleared {r.get('results',0)} result(s), {r.get('photos',0)} photo(s); "
           f"{r.get('testersReset',0)} tester(s) re-started{extra}")
+
+
+# ── run instances (spec 019) ──
+def test_exec_list(run_id):
+    rows = _test_request(f"/api/portal/test-runs/{run_id}/executions")
+    if not rows:
+        print("specs: no runs"); return
+    for e in rows:
+        started = (e.get("startedAt") or "")[:10]
+        print(f"  run #{e.get('number')}  {e.get('status'):<8} {started}  {e.get('label') or ''}  id={e.get('id')}")
+
+
+def test_exec_start(run_id, label=None):
+    data = {}
+    if label: data["label"] = label
+    e = _test_request(f"/api/portal/test-runs/{run_id}/executions", "POST", data)
+    print(f"specs: started run #{e.get('number')}{(' ' + e['label']) if e.get('label') else ''} — id={e.get('id')}")
+
+
+def test_exec_close(exec_id):
+    e = _test_request(f"/api/portal/executions/{exec_id}", "PATCH", {"status": "closed"})
+    print(f"specs: closed run #{e.get('number')}")
 
 
 # ── runs / sections / cases — full CRUD parity with the API ──
@@ -4829,10 +4858,11 @@ def test_retest_clear(case_id):
     print("specs: re-test request cleared")
 
 
-def test_result_record(case_id, status, comment, bug):
+def test_result_record(case_id, status, comment, bug, execution=None):
     body = {"status": status}
     if comment is not None: body["comment"] = comment
     if bug is not None: body["bugNumber"] = bug
+    if execution: body["executionId"] = execution
     _test_request(f"/api/portal/cases/{case_id}/results", "POST", body)
     print(f"specs: result recorded — {status}")
 
@@ -4949,7 +4979,8 @@ def handle_test(args):
         value_flags={"--name", "--type", "--description", "--start", "--end", "--section", "--key",
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
                      "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title",
-                     "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template", "--email"},
+                     "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template", "--email",
+                     "--execution", "--label"},
         bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes"},
     )
     if sub == "run-create":
@@ -4988,8 +5019,17 @@ def handle_test(args):
         test_tester_add(pos[0], vals.get("--name"), vals.get("--user"), "--token" in bools, vals.get("--email"))
     elif sub == "coverage":
         if not pos:
-            print("Usage: specs-cli.py test coverage <run-id>", file=sys.stderr); sys.exit(1)
-        test_coverage(pos[0])
+            print("Usage: specs-cli.py test coverage <run-id> [--execution <id>]", file=sys.stderr); sys.exit(1)
+        test_coverage(pos[0], vals.get("--execution"))
+    elif sub == "exec-list":
+        if not pos: print("Usage: specs-cli.py test exec-list <test-id>", file=sys.stderr); sys.exit(1)
+        test_exec_list(pos[0])
+    elif sub == "exec-start":
+        if not pos: print("Usage: specs-cli.py test exec-start <test-id> [--label '..']", file=sys.stderr); sys.exit(1)
+        test_exec_start(pos[0], vals.get("--label"))
+    elif sub == "exec-close":
+        if not pos: print("Usage: specs-cli.py test exec-close <execution-id>", file=sys.stderr); sys.exit(1)
+        test_exec_close(pos[0])
     elif sub == "signoff":
         if not pos or not vals.get("--decision"):
             print("Usage: specs-cli.py test signoff <run-id> --decision accepted|accepted_with_conditions|rejected [--note ..]", file=sys.stderr); sys.exit(1)
@@ -5014,15 +5054,15 @@ def handle_test(args):
         test_case_delete(pos[0])
     elif sub == "result-record":
         if not pos or not vals.get("--status"): print("Usage: specs-cli.py test result-record <case-id> --status ok|ok_with_bug|fail|blocked|na [--comment ..] [--bug ..]  (you must be a tester on the run)", file=sys.stderr); sys.exit(1)
-        test_result_record(pos[0], vals["--status"], vals.get("--comment"), vals.get("--bug"))
+        test_result_record(pos[0], vals["--status"], vals.get("--comment"), vals.get("--bug"), vals.get("--execution"))
     elif sub == "reset-run":
-        if not pos: print("Usage: specs-cli.py test reset-run <run-id> --yes   (deletes ALL results + photos, re-starts every tester, clears sign-off)", file=sys.stderr); sys.exit(1)
+        if not pos: print("Usage: specs-cli.py test reset-run <run-id> --yes [--execution <id>]   (deletes ALL results + photos for the run instance, re-starts every tester, clears sign-off)", file=sys.stderr); sys.exit(1)
         if "--yes" not in bools: print("specs: reset-run is destructive (deletes ALL results + photos, clears sign-off) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
-        test_reset(pos[0])
+        test_reset(pos[0], None, vals.get("--execution"))
     elif sub == "reset-tester":
-        if len(pos) < 2: print("Usage: specs-cli.py test reset-tester <run-id> <tester-id> --yes   (deletes that tester's results + photos, re-starts them)", file=sys.stderr); sys.exit(1)
+        if len(pos) < 2: print("Usage: specs-cli.py test reset-tester <run-id> <tester-id> --yes [--execution <id>]   (deletes that tester's results + photos in the run instance, re-starts them)", file=sys.stderr); sys.exit(1)
         if "--yes" not in bools: print("specs: reset-tester is destructive (deletes that tester's results + photos) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
-        test_reset(pos[0], pos[1])
+        test_reset(pos[0], pos[1], vals.get("--execution"))
     elif sub == "tester-list":
         if not pos: print("Usage: specs-cli.py test tester-list <run-id>", file=sys.stderr); sys.exit(1)
         test_tester_list(pos[0])
@@ -5084,6 +5124,7 @@ def handle_test(args):
     else:
         print("Usage: specs-cli.py test <subcommand> ...\n"
               "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | signoff\n"
+              "  instances: exec-list <test-id> | exec-start <test-id> [--label ..] | exec-close <exec-id>  (--execution <id> on coverage/result-record/reset)\n"
               "  sections: section-add | section-update | section-delete | section-reorder\n"
               "  cases:    case-add | case-update | case-delete | import-cases\n"
               "  images:   image-list | image-add | image-update | image-delete\n"

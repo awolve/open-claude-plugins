@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.28.0 — 2026-07-01
+
+**Run instances (spec-service 019).** A test now has multiple **runs** (executions) — re-run a regression weekly without resetting the last one.
+
+- **runs:** `test exec-list <test-id>`, `test exec-start <test-id> [--label '..']`, `test exec-close <exec-id>`.
+- `--execution <id>` on `coverage`, `result-record`, `reset-run`, `reset-tester` targets a specific run instance (default = the current run).
+- `coverage` prints which run instance it's for.
+
+Requires spec-service with the spec-019 endpoints deployed (the commands 404 until then).
+
 ## 0.27.0 — 2026-06-29
 
 **Re-test requests (spec-service 0.44.0).** The `test` group can flag a case for re-test during a UAT:
