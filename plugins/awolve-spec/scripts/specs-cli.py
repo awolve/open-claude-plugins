@@ -4671,9 +4671,16 @@ def test_tester_add(run_id, name, user_email, as_token, email=None):
         print(f"specs: tester '{t.get('displayName')}' added — id={t.get('id')}")
 
 
-def test_coverage(run_id, execution=None):
+def _tally_str(tally):
+    """Compact 'ok=3, fail=1' — omits zero buckets. '' when nothing recorded."""
+    return ", ".join(f"{k}={v}" for k, v in (tally or {}).items() if v)
+
+
+def test_coverage(run_id, execution=None, as_json=False):
     q = f"?execution={execution}" if execution else ""
     cov = _test_request(f"/api/portal/test-runs/{run_id}/coverage{q}")
+    if as_json:
+        print(json.dumps(cov, ensure_ascii=False, indent=2)); return
     o = cov["overall"]
     e = cov.get("execution")
     run_lbl = f"#{cov['run']['number']} {cov['run']['name']}"
@@ -4686,6 +4693,16 @@ def test_coverage(run_id, execution=None):
         print("  by role:")
         for r in cov["byRole"]:
             print(f"    {r['name'][:38]:<38} {r['covered']}/{r['totalCases']} covered, {r['withFail']} fail, {r['pending']} pending")
+    # Overall verdict distribution (the raw tally coverage counts but never showed).
+    overall_tally = _tally_str(o.get("tally"))
+    if overall_tally:
+        print(f"  verdicts: {overall_tally}")
+    # Per-tester breakdown — who recorded what.
+    if cov.get("testers"):
+        print("  per tester:")
+        for t in cov["testers"]:
+            tl = _tally_str(t.get("tally"))
+            print(f"    {t.get('displayName', '?')[:28]:<28} recorded={t.get('recorded', 0)}" + (f"  {tl}" if tl else ""))
     if cov.get("signoff"):
         print(f"  sign-off: {cov['signoff']['decision']} by {cov['signoff']['signedBy']}")
 
@@ -5109,8 +5126,8 @@ def handle_test(args):
         test_tester_add(pos[0], vals.get("--name"), vals.get("--user"), "--token" in bools, vals.get("--email"))
     elif sub == "coverage":
         if not pos:
-            print("Usage: specs-cli.py test coverage <run-id> [--execution <id>]", file=sys.stderr); sys.exit(1)
-        test_coverage(pos[0], vals.get("--execution"))
+            print("Usage: specs-cli.py test coverage <run-id> [--execution <id>] [--json]", file=sys.stderr); sys.exit(1)
+        test_coverage(pos[0], vals.get("--execution"), as_json="--json" in bools)
     elif sub == "results":
         if not pos:
             print("Usage: specs-cli.py test results <run-id> [--non-ok] [--execution <id>] [--download <dir>] [--json]   (per-case status/comment/bug/tester + evidence screenshots)", file=sys.stderr); sys.exit(1)
