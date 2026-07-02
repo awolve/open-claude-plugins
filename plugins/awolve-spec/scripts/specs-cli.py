@@ -4364,10 +4364,9 @@ def list_attachments(entity_type, entity_id, as_json=False):
         print(f"      id: {a.get('id', '?')}  uploaded: {a.get('uploadedAt', '?')} by {a.get('uploadedBy', '?')}")
 
 
-def download_attachment(attachment_id, out_path):
-    """Download an attachment's binary content by id. Writes to out_path
-    (a directory uses the server-provided filename; a file path is taken
-    literally)."""
+def _fetch_attachment(attachment_id):
+    """Fetch an attachment's binary content by id. Returns (data, server_name).
+    Shared by download_attachment and the test-results evidence saver."""
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -4399,7 +4398,14 @@ def download_attachment(attachment_id, out_path):
     except urllib.error.URLError as e:
         print(f"specs: download failed — {e.reason}", file=sys.stderr)
         sys.exit(1)
+    return data, server_name
 
+
+def download_attachment(attachment_id, out_path):
+    """Download an attachment's binary content by id. Writes to out_path
+    (a directory uses the server-provided filename; a file path is taken
+    literally)."""
+    data, server_name = _fetch_attachment(attachment_id)
     target = out_path
     if os.path.isdir(out_path):
         if not server_name:
@@ -4682,6 +4688,90 @@ def test_coverage(run_id, execution=None):
             print(f"    {r['name'][:38]:<38} {r['covered']}/{r['totalCases']} covered, {r['withFail']} fail, {r['pending']} pending")
     if cov.get("signoff"):
         print(f"  sign-off: {cov['signoff']['decision']} by {cov['signoff']['signedBy']}")
+
+
+def test_results(run_id, execution=None, non_ok=False, as_json=False, download_dir=None):
+    """Per-case result detail (status/comment/bug/tester/recordedAt + evidence
+    screenshots) for a run instance — the read-back that coverage's aggregate
+    tallies don't surface. Joins the /results rows (keyed by case id) with
+    run-show case identity so each row shows its caseKey + section. --non-ok
+    filters to non-ok verdicts; --download <dir> saves every result's photos."""
+    run = _test_request(f"/api/portal/test-runs/{run_id}")
+    q = f"?execution={execution}" if execution else ""
+    payload = _test_request(f"/api/portal/test-runs/{run_id}/results{q}")
+    rows = payload.get("results", [])
+    if non_ok:
+        rows = [r for r in rows if r.get("status") != "ok"]
+
+    section_name = {s["id"]: s["name"] for s in run.get("sections", [])}
+    section_pos = {s["id"]: s.get("position", 0) for s in run.get("sections", [])}
+    case_by_id = {c["id"]: c for c in run.get("cases", [])}
+    by_case = {}
+    for r in rows:
+        by_case.setdefault(r["caseId"], []).append(r)
+
+    if as_json:
+        out = []
+        for cid, rs in by_case.items():
+            c = case_by_id.get(cid, {})
+            out.append({
+                "caseId": cid,
+                "caseKey": c.get("caseKey"),
+                "title": c.get("title") or c.get("whatYouDo"),
+                "section": section_name.get(c.get("sectionId"), c.get("sectionId")),
+                "results": [{
+                    "status": r.get("status"), "comment": r.get("comment"), "bugNumber": r.get("bugNumber"),
+                    "tester": r.get("testerName"), "recordedAt": r.get("recordedAt"),
+                    "stale": r.get("stale"),
+                    "photos": [{
+                        "id": p.get("id"), "filename": p.get("filename"), "caption": p.get("caption"),
+                        "target": p.get("target"), "contentType": p.get("contentType"),
+                    } for p in r.get("photos", [])],
+                } for r in rs],
+            })
+        print(json.dumps({"run": run.get("number"), "results": out}, ensure_ascii=False, indent=2))
+        return
+
+    if download_dir:
+        os.makedirs(download_dir, exist_ok=True)
+
+    print(f"#{run['number']} {run['name']} [{run['type']}] — {run['status']}")
+    if not rows:
+        print("  (no results recorded)" + (" for non-ok verdicts" if non_ok else ""))
+        return
+
+    # Group cases by section, ordered as in the run.
+    cids_by_section = {}
+    for cid in by_case:
+        sid = case_by_id.get(cid, {}).get("sectionId")
+        cids_by_section.setdefault(sid, []).append(cid)
+    for sid in sorted(cids_by_section, key=lambda s: (section_pos.get(s, 9999), section_name.get(s, ""))):
+        print(f"\n  {section_name.get(sid, sid)}")
+        cids = sorted(cids_by_section[sid], key=lambda cid: (case_by_id.get(cid, {}).get("position", 0), cid))
+        for cid in cids:
+            c = case_by_id.get(cid, {})
+            key = c.get("caseKey") or cid
+            for r in by_case[cid]:
+                bits = [f"by {r.get('testerName', '?')}"]
+                if r.get("bugNumber"): bits.append(f"bug #{r['bugNumber']}")
+                if r.get("stale"): bits.append("STALE")
+                print(f"    {key:<10} {(r.get('status') or 'pending'):<12} {'  '.join(bits)}")
+                if r.get("comment"):
+                    print(f"               ↳ {r['comment']}")
+                if r.get("recordedAt"):
+                    print(f"               · {r['recordedAt']}" + (f"  ({len(r['photos'])} photo(s))" if r.get("photos") else ""))
+                for p in r.get("photos", []):
+                    side = p.get("target") or "evidence"
+                    label = p.get("caption") or p.get("filename") or "photo"
+                    line = f"               📷 [{side}] {label}  id={p.get('id')}"
+                    if download_dir:
+                        safe = f"{key}_{r.get('status') or 'result'}_{p.get('filename') or p.get('id')}"
+                        dest = os.path.join(download_dir, safe)
+                        data, _ = _fetch_attachment(p["id"])
+                        with open(dest, "wb") as fh:
+                            fh.write(data)
+                        line += f"  → {dest}"
+                    print(line)
 
 
 def test_signoff(run_id, decision, note):
@@ -4980,8 +5070,8 @@ def handle_test(args):
                      "--what", "--expected", "--feature", "--user", "--position", "--decision", "--note", "--status",
                      "--comment", "--bug", "--caption", "--target", "--prerequisite", "--prereq-cases", "--title",
                      "--scope", "--kind", "--scope-ref", "--environment", "--account-ref", "--template", "--email",
-                     "--execution", "--label"},
-        bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes"},
+                     "--execution", "--label", "--download"},
+        bool_flags={"--token", "--json", "--revoke", "--reissue", "--yes", "--non-ok"},
     )
     if sub == "run-create":
         if not pos or not vals.get("--name"):
@@ -5021,6 +5111,10 @@ def handle_test(args):
         if not pos:
             print("Usage: specs-cli.py test coverage <run-id> [--execution <id>]", file=sys.stderr); sys.exit(1)
         test_coverage(pos[0], vals.get("--execution"))
+    elif sub == "results":
+        if not pos:
+            print("Usage: specs-cli.py test results <run-id> [--non-ok] [--execution <id>] [--download <dir>] [--json]   (per-case status/comment/bug/tester + evidence screenshots)", file=sys.stderr); sys.exit(1)
+        test_results(pos[0], vals.get("--execution"), non_ok="--non-ok" in bools, as_json="--json" in bools, download_dir=vals.get("--download"))
     elif sub == "exec-list":
         if not pos: print("Usage: specs-cli.py test exec-list <test-id>", file=sys.stderr); sys.exit(1)
         test_exec_list(pos[0])
@@ -5123,7 +5217,7 @@ def handle_test(args):
         test_retest_clear(pos[0])
     else:
         print("Usage: specs-cli.py test <subcommand> ...\n"
-              "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | signoff\n"
+              "  runs:     run-create | run-list | run-update | run-delete | run-show | coverage | results | signoff\n"
               "  instances: exec-list <test-id> | exec-start <test-id> [--label ..] | exec-close <exec-id>  (--execution <id> on coverage/result-record/reset)\n"
               "  sections: section-add | section-update | section-delete | section-reorder\n"
               "  cases:    case-add | case-update | case-delete | import-cases\n"
@@ -5132,7 +5226,7 @@ def handle_test(args):
               "  roles:    role-add | role-list | role-rename | role-remove | role-seed | case-roles |\n"
               "            role-identity-set | role-template-add | role-template-list\n"
               "  re-test:  retest <case-id> [--note ..] | retest-clear <case-id>\n"
-              "  results:  result-record\n"
+              "  results:  results <run-id> [--non-ok] (read per-case detail) | result-record (write a verdict)\n"
               "  reset:    reset-run <run-id> --yes | reset-tester <run-id> <tester-id> --yes", file=sys.stderr)
         sys.exit(1)
 
