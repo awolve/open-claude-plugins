@@ -2916,7 +2916,11 @@ def view_backlog(project_id, ref, as_json=False):
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
-    print(f"  portal:    {service_url}/portal/{project_id}/backlog/{item.get('id', '')}")
+    # The portal detail route is /backlog/[number] (it does Number(params.number)),
+    # so the link must use the item number, not its uuid. Legacy items without a
+    # number have no detail page — skip the link rather than print a 404.
+    if number:
+        print(f"  portal:    {service_url}/portal/{project_id}/backlog/{number}")
     print()
     print("Description:")
     print(description)
