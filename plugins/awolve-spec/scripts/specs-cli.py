@@ -5555,6 +5555,11 @@ def main():
                 print(f"specs: --epic must be 'true' or 'false', got '{fields['isEpic']}'", file=sys.stderr)
                 sys.exit(1)
             fields["isEpic"] = (v == "true")
+        # Guard the status enum client-side (the API also rejects it) so a bad
+        # value fails fast with the valid set, instead of a round-trip 400.
+        if "status" in fields and fields["status"] not in ("idea", "planned", "in_progress", "completed", "archived"):
+            print(f"specs: --status must be one of idea, planned, in_progress, completed, archived; got '{fields['status']}'", file=sys.stderr)
+            sys.exit(1)
         update_backlog_item(positional[0], positional[1], fields)
     elif cmd == "backlog-delete":
         if len(args) < 3:
