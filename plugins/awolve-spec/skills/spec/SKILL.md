@@ -40,6 +40,23 @@ Each phase is a separate command invocation. Do not write multiple spec files in
 **Small feature:** design → implement
 **No spec:** build it → optionally `/awolve-spec:retro`
 
+### Closing a feature — run this checklist proactively
+
+Implementation finished ≠ feature done. When the build wraps, close the loop without waiting for the user to ask "is it closed?":
+
+1. **Docs match reality** — `design.md` and `plan.md` reflect what was actually built (update them, or `/awolve-spec:retro` if the work outran the spec). All plan tasks checked off.
+2. **Shipped per the repo's ship cycle** — version bumped, branches synced, deployed and verified per the repo's `CLAUDE.md` ship & deploy section. A local-only "done" is not done.
+3. **Statuses flipped** — feature → `completed` via `/awolve-spec:set-status`; related bugs → `resolved` with a closing `bug-comment` (commit SHA, version, rollout notes); doc review comments addressed and resolved via `resolve-comment`.
+4. **Infra drift captured** — if infrastructure changed, update the project's SIGL files (see `handbook-context/engineering/architecture/sigl-spec.md`).
+
+### Keep specs current mid-build
+
+Specs track reality, not intentions. The moment a decision lands — in chat, in a meeting, in code — update the affected spec doc in the same session. Check off plan tasks as they complete. Never leave "is the spec updated?" as a question the user has to ask.
+
+### Client visibility
+
+Everything under the synced specs tree — including `specs/shared/` — is visible to clients on the portal for client projects. Never place internal-only material there (SIGL files, credentials, internal strategy, cost notes), and never rely on file extensions to keep something unexposed.
+
 ### Commands — sync and management
 
 - `/awolve-spec:pull` — Pull latest spec files from the service

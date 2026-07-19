@@ -57,6 +57,8 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/plan.md`:
 - Tasks should produce testable results
 - Include file paths for clarity
 - Order tasks so each builds on the previous
+- Include tests in the plan — unit tests for pure logic, e2e where feasible; testing is a task, not an afterthought
+- Where the feature touches infrastructure, shared taxonomy, or docs, add explicit closing tasks for them (e.g. "update SIGL", "update taxonomy.md") so they aren't dropped at the end
 
 Adapt the template — if dependencies aren't relevant, skip that section. If phases don't make sense for this feature, use a flat task list.
 
@@ -81,3 +83,13 @@ Plan written: {path to plan.md}
 
 Ready to implement. Start with task 1.1.
 ```
+
+## During implementation — keep the plan current
+
+The plan is the durable record that later sessions (and the portal) read to know where the work stands. Whoever implements against this plan must:
+
+- Check off tasks (`- [x]`) in the same turn the work completes — not in a batch at the end, and never only when the user asks "is the plan up to date?"
+- When a decision changes the approach mid-build, update the affected tasks and `design.md` immediately — specs track reality, not intentions
+- The PostToolUse hook pushes each edit automatically; no manual sync needed
+
+When the last task is checked off, run the closure checklist in the `awolve-spec:spec` skill (docs match reality → shipped per the repo's ship cycle → statuses flipped → SIGL updated).

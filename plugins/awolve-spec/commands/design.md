@@ -80,6 +80,8 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/design.md`:
 
 Adapt the template to the feature — not every section applies to every feature. Skip sections that don't add value. Add sections that are needed but not in the template.
 
+**Open questions:** don't leave them open. Write your recommended approach as the selected decision (noting it resolves an open question) — the reviewer comments only where they disagree. A design full of unresolved questions pushes the decision work back onto the reader.
+
 ### 5. Register and push
 
 If this is a new feature (folder didn't exist before), register it in the spec service:

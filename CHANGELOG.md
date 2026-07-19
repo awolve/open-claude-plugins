@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.32.0 — 2026-07-19
+
+**Process feedback codified.** A month of session analysis showed the same corrections repeated across desk/atrium/cellum work; the recurring ones now live in the plugin:
+
+- **skill:** "Closing a feature" checklist — docs match reality → shipped per the repo's ship cycle → statuses flipped (feature `completed`, bugs commented + resolved, comments resolved) → SIGL drift captured. Run proactively, not when asked.
+- **skill:** "Keep specs current mid-build" — update spec docs the moment a decision lands; check off plan tasks as they complete.
+- **skill:** client-visibility warning — everything under the synced specs tree (incl. `specs/shared/`) is client-visible on client projects; no internal-only material there.
+- **plan:** tasks must include tests (unit + e2e where feasible) and explicit closing tasks for SIGL/taxonomy/doc updates; new "During implementation" section on keeping the plan current.
+- **design:** open questions are written as selected decisions (reviewer comments on disagreement only).
+- **req:** style guidance — name real users, quote interviews, describe the journey, state the target role for security scope.
+
 ## 0.28.0 — 2026-07-01
 
 **Run instances (spec-service 019).** A test now has multiple **runs** (executions) — re-run a regression weekly without resetting the last one.
