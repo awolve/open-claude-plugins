@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.1 — 2026-07-19
+
+- **plan:** implementers flip the feature to `in_progress` at the first implementation commit — adopted as the standard flow (handbook development-lifecycle.md); gives the portal a live view of what's being built.
+
 ## 0.32.0 — 2026-07-19
 
 **Process feedback codified.** A month of session analysis showed the same corrections repeated across desk/atrium/cellum work; the recurring ones now live in the plugin:

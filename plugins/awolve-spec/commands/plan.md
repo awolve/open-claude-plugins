@@ -88,6 +88,7 @@ Ready to implement. Start with task 1.1.
 
 The plan is the durable record that later sessions (and the portal) read to know where the work stands. Whoever implements against this plan must:
 
+- **Flip the feature to `in_progress` at the first implementation commit** (`specs-cli.py set-status <feature> in_progress`) — one command, and the portal shows what's actually being built
 - Check off tasks (`- [x]`) in the same turn the work completes — not in a batch at the end, and never only when the user asks "is the plan up to date?"
 - When a decision changes the approach mid-build, update the affected tasks and `design.md` immediately — specs track reality, not intentions
 - The PostToolUse hook pushes each edit automatically; no manual sync needed
