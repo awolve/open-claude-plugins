@@ -6,7 +6,7 @@ argument-hint: [project/feature-name]
 
 # /awolve-spec:infra
 
-Review an existing `design.md` and add a detailed `## Infrastructure` section covering all infrastructure changes the feature requires. Uses SIGL description headers as a reasoning framework (see `handbook-context/engineering/architecture/sigl-spec.md`).
+Review an existing `design.md` and add a detailed `## Infrastructure` section covering all infrastructure changes the feature requires. Uses SIGL description headers as a reasoning framework — the header checklist below is self-contained (Awolve-internal readers can find the full spec at `handbook-context/engineering/architecture/sigl-spec.md`).
 
 ## When to use
 

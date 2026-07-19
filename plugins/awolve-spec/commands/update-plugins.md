@@ -6,7 +6,7 @@ description: Refresh the awolve-open-claude-plugins marketplace and reload the s
 
 Refresh the `awolve-open-claude-plugins` marketplace (from `awolve/open-claude-plugins`) so newer plugin versions become available locally, then prompt the user to reload the session.
 
-> **Scope note:** this only covers `awolve-open-claude-plugins`. For `awolve-marketplace`, run `/update-awolve-plugins`. `/cortex-update` runs both.
+> **Scope note:** this only covers `awolve-open-claude-plugins`. Awolve-internal users: `/update-awolve-plugins` covers `awolve-marketplace`, and `/cortex-update` runs both.
 
 ## Instructions
 

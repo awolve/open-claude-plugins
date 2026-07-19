@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.32.2 — 2026-07-19
+
+**External-user pass.** The plugin is used outside Awolve (StudyAlong; more orgs coming) — Awolve-internal conventions are now parentheticals, not prerequisites:
+
+- Closure checklist and plan tasks say "the project's living docs" generically (at Awolve: SIGL files, `shared/` docs, taxonomy.md).
+- "Client visibility" reframed as **portal visibility** — everything in the synced tree is visible to every portal user with project access, whoever they are.
+- `req`: "the client's `_contacts.md`" → "the project's contact records".
+- `infra`: the SIGL-header checklist is explicitly self-contained; the handbook path is marked Awolve-internal.
+- `/cortex-update` / `/cortex-doctor-content` mentions marked Awolve-internal.
+
 ## 0.32.1 — 2026-07-19
 
 - **plan:** implementers flip the feature to `in_progress` at the first implementation commit — adopted as the standard flow (handbook development-lifecycle.md); gives the portal a live view of what's being built.

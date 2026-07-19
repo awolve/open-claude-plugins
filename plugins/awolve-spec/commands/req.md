@@ -77,7 +77,7 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/requirements.md`:
 ```
 
 **Requirements style — write for the humans who will use it and the AI that will build it:**
-- **Name the real users** when they are known (from interviews, the client's `_contacts.md`) instead of abstract personas — "Maria in customer service" beats "As a support agent". It skips an abstraction layer and explains the need better.
+- **Name the real users** when they are known (from interviews or the project's contact records) instead of abstract personas — "Maria in customer service" beats "As a support agent". It skips an abstraction layer and explains the need better.
 - **Quote the source.** When requirements come from interviews or meetings, include short verbatim quotes — they carry more signal than paraphrase.
 - **Describe the user's journey**, not just isolated capabilities — where does this feature sit in their working day?
 - **State the target role explicitly** — who may use this and who must not. The implementing AI reads requirements for security scope, so access boundaries belong in the *what*, not only in the design.

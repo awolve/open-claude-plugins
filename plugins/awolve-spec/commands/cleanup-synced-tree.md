@@ -25,5 +25,5 @@ Then, only with the user's go-ahead, run for real (drop `--dry-run`).
 **Coordination matters.** A single machine's deletion loses the race against
 peers' session-start pulls, which re-upload the files within minutes. For a
 durable purge, run this with **every peer's OneDrive paused** (or delete
-server-side), then confirm with `/cortex-doctor-content`. Until all machines
+server-side), then confirm the tree is clean (Awolve-internal: `/cortex-doctor-content`). Until all machines
 update the plugin, stragglers will keep reappearing.
