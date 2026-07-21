@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.0 — 2026-07-21
+
+**`feature-snapshot` subcommand.** New read-only command: `specs-cli.py feature-snapshot <project-id> <feature-name> [--json]` returns the feature's status plus, per document, its status and unresolved comment count — in a single service call (new `/api/features/lookup/snapshot` endpoint, spec service ≥ 0.50.0). Built for pollers that derive state from doc statuses: auth failure, unknown feature, and transport errors exit non-zero with distinct stderr messages. `--json` prints the raw response; without it, a compact table.
+
 ## 0.32.2 — 2026-07-19
 
 **External-user pass.** The plugin is used outside Awolve (StudyAlong; more orgs coming) — Awolve-internal conventions are now parentheticals, not prerequisites:

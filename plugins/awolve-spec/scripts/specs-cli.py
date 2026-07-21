@@ -43,6 +43,8 @@ Usage:
                                        — List all features in a project
     specs-cli.py list-docs <project-id> <feature-name>
                                        — List all documents in a feature
+    specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
+                                       — One-call snapshot: feature status, doc statuses, unresolved comment counts
     specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY]
                                        — List backlog items (default: tree view, grouped by epic)
     specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]
@@ -3958,6 +3960,69 @@ def list_docs(project_id, feature_name):
         print(f"  {filename:40s}  v{version}  {doc_status}")
 
 
+def feature_snapshot(project_id, feature_name, as_json=False):
+    """One-call feature snapshot: feature status, per-doc status, unresolved comment counts.
+
+    Thin wrapper over /api/features/lookup/snapshot. Built for pollers
+    (e.g. a watcher deriving gate state from doc statuses), so exit
+    behavior is strict: auth failure, unknown feature, and transport
+    errors are all distinguishable on stderr with non-zero exit.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+
+    service_url = cfg["service_url"]
+    feature_id = f"{project_id}/{feature_name}"
+
+    import urllib.parse
+    encoded_id = urllib.parse.quote(feature_id, safe="")
+
+    try:
+        status_code, body = api_request(
+            f"{service_url}/api/features/lookup/snapshot?id={encoded_id}",
+            headers=headers,
+        )
+    except ConnectionError as e:
+        print(f"specs: failed to fetch snapshot — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code in (401, 403):
+        print("specs: authentication failed — run /awolve-spec:login", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print(f"specs: feature '{feature_id}' not found", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"specs: snapshot failed (HTTP {status_code}): {body}", file=sys.stderr)
+        sys.exit(1)
+
+    snapshot = json.loads(body)
+
+    if as_json:
+        print(json.dumps(snapshot, indent=2))
+        return
+
+    print(f"specs: {snapshot.get('project')}/{snapshot.get('feature')} — {snapshot.get('featureStatus')}")
+    docs = snapshot.get("docs", [])
+    if not docs:
+        print("  (no documents)")
+        return
+    print()
+    for doc in docs:
+        name = doc.get("name", "?")
+        doc_status = doc.get("status", "?")
+        unresolved = doc.get("unresolvedComments", 0)
+        suffix = f"  {unresolved} unresolved" if unresolved else ""
+        print(f"  {name:40s}  {doc_status}{suffix}")
+
+
 def list_features(project_id):
     """List all features in a project."""
     cfg = config.read_config()
@@ -5680,6 +5745,11 @@ def main():
             print("Usage: specs-cli.py list-docs <project-id> <feature-name>", file=sys.stderr)
             sys.exit(1)
         list_docs(args[1], args[2])
+    elif cmd == "feature-snapshot":
+        if len(args) < 3:
+            print("Usage: specs-cli.py feature-snapshot <project-id> <feature-name> [--json]", file=sys.stderr)
+            sys.exit(1)
+        feature_snapshot(args[1], args[2], as_json="--json" in args)
     elif cmd == "comments":
         if len(args) < 2:
             print("Usage: specs-cli.py comments <file-path> [--json]", file=sys.stderr)
