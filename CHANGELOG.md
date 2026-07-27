@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.1 — 2026-07-27
+
+**`/awolve-spec:update-plugins` now actually updates the plugin.** The command only ran `claude plugin marketplace update`, which refreshes the *catalog* of available versions but never moves the installed version pin — so the command reported success while the plugin kept running its old code. It now also runs `claude plugin update` for each installed plugin from the marketplace, and documents that `claude plugin install` no-ops on an already-installed plugin.
+
+Why this matters: the plugin's `SessionStart` hook runs `specs-cli.py pull` via `${CLAUDE_PLUGIN_ROOT}`, which resolves to the *installed* plugin. A user stuck on a pre-0.19.0 pin therefore re-created in-tree `.remote` conflict sidecars on every single session start, silently, even after running the update command and `/reload-plugins`. Observed in the field on 2026-07-27: 16 sidecars regenerated across `clients/` and `operations/tools/` within seconds of each new session, surviving two cleanup passes. The "After the Update" section now also tells users to restart Claude Code, since hooks in already-running sessions keep resolving to the old plugin root.
+
 ## 0.33.0 — 2026-07-21
 
 **`feature-snapshot` subcommand.** New read-only command: `specs-cli.py feature-snapshot <project-id> <feature-name> [--json]` returns the feature's status plus, per document, its status and unresolved comment count — in a single service call (new `/api/features/lookup/snapshot` endpoint, spec service ≥ 0.50.0). Built for pollers that derive state from doc statuses: auth failure, unknown feature, and transport errors exit non-zero with distinct stderr messages. `--json` prints the raw response; without it, a compact table.
