@@ -21,4 +21,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py view-bug <project-id> <bug-nu
 
 Add `--json` if the user asks for machine-readable output.
 
-Show the result. If the bug description contains a proposed fix, offer to apply it. Do not apply without confirmation.
+Show the result — including the `assignee` line, which reads `(unassigned)` when nobody owns it yet. If the bug description contains a proposed fix, offer to apply it. Do not apply without confirmation.

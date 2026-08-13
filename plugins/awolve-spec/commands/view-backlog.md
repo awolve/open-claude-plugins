@@ -24,7 +24,7 @@ Pass `--json` to get the raw payload (parent, children, comments included) when 
 
 Shows:
 - header — priority marker, status, item number, title, `[EPIC]` tag if applicable
-- author, promoted-feature link (if any), parent reference, child counts (if epic)
+- author, assignee (or `(unassigned)`), promoted-feature link (if any), parent reference, child counts (if epic)
 - created/updated timestamps and the portal URL
 - the full **Description** in markdown
 - the **Children** list (epics only) — each child's `#N`, priority, title, status

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.34.0 — 2026-08-13
+
+**Assignment (spec-service 0.51.0).** Backlog items and bugs can carry an assignee, and the CLI can set, clear, and filter on it.
+
+- **Set:** `backlog-update … --assignee <email>` / `--unassign`, `update-bug … --assignee <email>` / `--unassign`, and `backlog-add … --assignee <email>` to create with an owner. `--assignee` and `--unassign` are mutually exclusive; passing neither leaves the current assignee untouched.
+- **Filter:** `backlog [project] --assignee <email>|--unassigned` and `bugs [project] --assignee <email>|--unassigned`. `--assignee` matches an email or a fragment of a display name (`--assignee bjorn` works). Omit the project id to sweep every configured project — that's how to answer "what's on my plate everywhere".
+- **Read:** list rows show `· @Name`; `view-backlog` and `view-bug` print an `assignee` line that reads `(unassigned)` when nobody owns it.
+- An assignee filter forces flat view on `backlog`. In tree view a matching child is only rendered under a surviving parent, so filtering by assignee silently dropped any match whose epic didn't also match — under-reporting what someone is carrying.
+- Server rejections are translated instead of echoed: `assignee_not_found` → "they need to have signed in at least once", `assignee_no_access` → "grant access first, then assign".
+
+**Fixed:** `backlog --status <x>` with no project id read the flag's *value* as the project name (the positional collector didn't skip flag values), so `backlog --status idea` looked for a project called "idea". Would have bitten constantly now that `backlog --assignee <email>` across all projects is a normal thing to type.
+
+Requires spec-service 0.51.0 — assignee fields are absent until it's deployed.
+
 ## 0.33.1 — 2026-07-27
 
 **`/awolve-spec:update-plugins` now actually updates the plugin.** The command only ran `claude plugin marketplace update`, which refreshes the *catalog* of available versions but never moves the installed version pin — so the command reported success while the plugin kept running its old code. It now also runs `claude plugin update` for each installed plugin from the marketplace, and documents that `claude plugin install` no-ops on an already-installed plugin.

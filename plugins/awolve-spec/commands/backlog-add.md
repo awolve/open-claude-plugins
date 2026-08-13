@@ -15,11 +15,12 @@ Ask the user for:
 - **Description** (optional) — detail about what and why
 - **Priority** (optional, default: `medium`) — `low`, `medium`, or `high`
 - **Parent epic** (optional) — if the user references an existing item to nest this under (e.g. "add as a child of #4" or "under the onboarding epic"), pass `--parent <id-or-#N>`
+- **Assignee** (optional) — if the user names someone to own it ("assign it to Michael"), pass `--assignee <email>`. Leave it off otherwise; unassigned is a perfectly good state for an idea.
 
 Then run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<title>" "<description>" <priority> [--parent <id-or-#N>] [--epic]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<title>" "<description>" <priority> [--parent <id-or-#N>] [--epic] [--assignee <email>]
 ```
 
 Examples:
@@ -33,7 +34,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "User 
 
 # Child of epic #4
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welcome screen copy" "" medium --parent 4
+
+# Assigned on creation
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welcome screen copy" "" medium --assignee michael.dovland@awolve.ai
 ```
+
+`--assignee` takes an email. The person must be able to see the project — internal Awolve users always can; external users need project access first, or the create fails with `assignee_no_access`. Assignment can also be added later with `/awolve-spec:backlog-update --assignee`.
 
 `--parent` accepts either a UUID or a numeric `#N` reference (with or without the `#`). The CLI resolves it server-side and rejects:
 - A parent that doesn't exist or belongs to a different project (`parent_not_found`, `parent_wrong_project`)

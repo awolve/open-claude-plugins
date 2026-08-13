@@ -45,15 +45,16 @@ Usage:
                                        — List all documents in a feature
     specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
                                        — One-call snapshot: feature status, doc statuses, unresolved comment counts
-    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY]
-                                       — List backlog items (default: tree view, grouped by epic)
+    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned]
+                                       — List backlog items (default: tree view, grouped by epic;
+                                         --assignee forces flat view so no match is hidden under a filtered-out epic)
     specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]
                                        — Show full details of a single backlog item (description, parent, etc.)
-    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>]
+    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--assignee EMAIL]
                                        — Create a backlog item; optional --parent makes it a child of an epic
     specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>
                                        — Reparent a backlog item (or pass 'none' to clear the parent)
-    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false]
+    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL|--unassign]
                                        — Update fields on an existing backlog item
     specs-cli.py backlog-delete <project-id> <item-id-or-#N>
                                        — Soft-delete a backlog item (cascades to children)
@@ -67,14 +68,15 @@ Usage:
                                        — Promote a backlog item to a feature (creates spec.md quick-spec)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
-    specs-cli.py bugs <project-id>     — List bugs for a project
+    specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned]
+                                       — List open bugs for a project (or all configured projects)
     specs-cli.py bug <project-id> <title> <description> [severity] — Create a bug
     specs-cli.py view-bug <project-id> <bug-number> [--json]
                                        — Show full details of a single bug (description, severity, repro, etc.)
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
-    specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S]
-                                       — Edit a bug's title, description, or severity
+    specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
+                                       — Edit a bug's title, description, severity, or assignee
     specs-cli.py bug-comments <project-id> <bug-number> [--json]
                                        — List comments on a bug
     specs-cli.py bug-comment <project-id> <bug-number> <body>
@@ -2179,8 +2181,12 @@ BUG_SEVERITIES = ["low", "medium", "high", "critical"]
 BUG_STATUSES = ["open", "triaged", "in_progress", "ready_for_retest", "resolved", "closed"]
 
 
-def list_bugs(project_id=None):
-    """List bugs for a project or all configured projects."""
+def list_bugs(project_id=None, assignee_filter=None):
+    """List bugs for a project or all configured projects.
+
+    `assignee_filter` (spec 022) is an email or name fragment, or the literal
+    'none'/'unassigned' for bugs nobody owns.
+    """
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -2214,6 +2220,8 @@ def list_bugs(project_id=None):
 
         bugs = json.loads(body)
         open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
+        if assignee_filter:
+            open_bugs = _filter_by_assignee(open_bugs, assignee_filter)
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(open_bugs)} open)")
@@ -2232,8 +2240,10 @@ def list_bugs(project_id=None):
             title = bug.get("title", "untitled")
             reporter = bug.get("reporterName") or bug.get("reporterEmail", "?")
             sev_marker = {"critical": "!!!", "high": "!!", "medium": "!", "low": "."}.get(severity, "?")
+            assignee = _assignee_label(bug)
+            assigned = f"  · @{assignee}" if assignee else ""
             print(f"  #{number:<4} [{sev_marker}] {title}")
-            print(f"        {status} — reported by {reporter}")
+            print(f"        {status} — reported by {reporter}{assigned}")
 
 
 # Markdown image carrying an inline base64 data URI:
@@ -2359,6 +2369,7 @@ def view_bug(project_id, bug_number, as_json=False):
     print(f"#{number} [{sev_marker} {severity}] {title}")
     print(f"  status:    {status}")
     print(f"  reporter:  {reporter}")
+    print(f"  assignee:  {_assignee_label(detail) or '(unassigned)'}")
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
@@ -2488,13 +2499,14 @@ def _resolve_bug(project_id, bug_number):
 
 
 def update_bug(project_id, bug_number, fields):
-    """Update title/description/severity on an existing bug.
+    """Update title/description/severity/assignedTo on an existing bug.
 
     `fields` is a dict of {api_key: value} to PATCH. Status changes go via
-    set_bug_status for clearer audit semantics.
+    set_bug_status for clearer audit semantics. assignedTo=None unassigns
+    (spec 022); assigning needs bug:write:any on the project.
     """
     if not fields:
-        print("specs: nothing to update — pass at least one of --title/--description/--severity", file=sys.stderr)
+        print("specs: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
     if "severity" in fields and fields["severity"] not in BUG_SEVERITIES:
@@ -2517,6 +2529,7 @@ def update_bug(project_id, bug_number, fields):
         sys.exit(1)
 
     if status_code not in (200, 201):
+        _print_assignee_error(status_code, body, fields.get("assignedTo"))
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -2676,14 +2689,15 @@ def delete_bug_comment(project_id, bug_number, comment_id):
     print(f"specs: comment {comment_id} on bug #{number} deleted")
 
 
-def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None):
+def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
       view='tree'  (default) — group items by parent: epic header + indented children
       view='epics' — show only top-level items that have at least one child
       view='flat'  — flat list, no grouping (legacy behavior)
-    Filters: optional status (single value) and priority (single value).
+    Filters: optional status (single value), priority (single value), and
+    assignee (spec 022 — an email, or the literal 'none' for unassigned).
     """
     cfg = config.read_config()
     if not cfg:
@@ -2704,6 +2718,12 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             print(f"specs: project '{project_id}' not in config", file=sys.stderr)
             sys.exit(1)
 
+    # Tree view renders children only underneath a surviving parent, so an
+    # assignee filter would silently swallow any match whose epic doesn't also
+    # match. Flat view answers "what is on X's plate" honestly.
+    if assignee_filter and view == "tree":
+        view = "flat"
+
     for proj in projects:
         url = f"{service_url}/api/portal/projects/{proj['id']}/backlog"
         try:
@@ -2722,6 +2742,8 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             active = [i for i in active if i.get("status") == status_filter]
         if priority_filter:
             active = [i for i in active if i.get("priority") == priority_filter]
+        if assignee_filter:
+            active = _filter_by_assignee(active, assignee_filter)
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(active)} active)")
@@ -2757,6 +2779,48 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
                     _print_backlog_row(k, indent=2)
 
 
+def _assignee_label(item):
+    """Human label for an item's assignee, or None when unassigned (spec 022)."""
+    return item.get("assignedToName") or item.get("assignedToEmail")
+
+
+def _print_assignee_error(status_code, body, assignee):
+    """Turn the server's short assignee error codes into an actionable message.
+
+    Only prints when the failure really is about the assignee — the caller still
+    prints its own generic error afterwards for everything else.
+    """
+    if not assignee or status_code not in (400, 403):
+        return
+    try:
+        err = (json.loads(body) or {}).get("error")
+    except (json.JSONDecodeError, TypeError):
+        return
+    if err == "assignee_not_found":
+        print(f"specs: no portal user found for '{assignee}' — they need to have signed in at least once", file=sys.stderr)
+    elif err == "assignee_no_access":
+        print(f"specs: '{assignee}' has no access to this project — grant access first, then assign", file=sys.stderr)
+
+
+def _filter_by_assignee(items, assignee_filter):
+    """Keep items matching an assignee filter.
+
+    `assignee_filter` is an email (matched case-insensitively against the
+    assignee's email, or as a substring of their display name so '--assignee
+    bjorn' works) or the literal 'none'/'unassigned' for items nobody owns.
+    """
+    needle = assignee_filter.strip().lower()
+    if needle in ("none", "unassigned"):
+        return [i for i in items if not i.get("assignedTo")]
+    out = []
+    for i in items:
+        email = (i.get("assignedToEmail") or "").lower()
+        name = (i.get("assignedToName") or "").lower()
+        if (email and (email == needle or needle in email)) or (name and needle in name):
+            out.append(i)
+    return out
+
+
 def _print_backlog_row(item, indent=0):
     pad = " " * indent
     priority = item.get("priority", "?")
@@ -2777,8 +2841,10 @@ def _print_backlog_row(item, indent=0):
         histogram = " · (no items yet)"
     num_str = f"#{number} " if number else ""
     epic_tag = "[EPIC] " if is_epic else ""
+    assignee = _assignee_label(item)
+    assigned = f"  · @{assignee}" if assignee else ""
     print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{histogram}")
-    print(f"       {pad}{status}{promoted}")
+    print(f"       {pad}{status}{promoted}{assigned}")
 
 
 def _resolve_backlog_id(headers, service_url, project_id, ref):
@@ -2897,6 +2963,7 @@ def view_backlog(project_id, ref, as_json=False):
     print(f"{num_str}[{pri_marker} {priority}] {epic_tag}{title}")
     print(f"  status:    {status}")
     print(f"  author:    {created_by}")
+    print(f"  assignee:  {_assignee_label(item) or '(unassigned)'}")
     if feature_id:
         ft = f" — {feature_title}" if feature_title else ""
         fs = f" [{feature_status}]" if feature_status else ""
@@ -3096,9 +3163,10 @@ def restore_backlog(project_id, ref):
     print(f"specs: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
 
 
-def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False):
+def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False, assignee=None):
     """Create a new backlog item. `parent` may be a uuid or a numeric #N reference.
-    `is_epic=True` marks this item as an epic (can have children, can't have a parent)."""
+    `is_epic=True` marks this item as an epic (can have children, can't have a parent).
+    `assignee` is an email (spec 022) — optional, omitted means unassigned."""
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -3131,6 +3199,8 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         payload["parentId"] = parent_id
     if is_epic:
         payload["isEpic"] = True
+    if assignee:
+        payload["assignedTo"] = assignee
 
     try:
         status_code, body = api_request(
@@ -3157,13 +3227,15 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
             )
             sys.exit(1)
     if status_code not in (200, 201):
+        _print_assignee_error(status_code, body, assignee)
         print(f"specs: failed to create backlog item (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     item = json.loads(body)
     kind = "epic" if is_epic else "backlog item"
     parent_note = f" under epic '{parent}'" if parent_id else ""
-    print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}")
+    assigned_note = f", assigned to {_assignee_label(item) or assignee}" if assignee else ""
+    print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}")
 
 
 def set_backlog_parent(project_id, item_ref, parent_ref):
@@ -3222,14 +3294,15 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
 
 
 def update_backlog_item(project_id, item_ref, fields):
-    """Update title/description/priority/status/isEpic on an existing backlog item.
+    """Update title/description/priority/status/isEpic/assignedTo on an item.
 
     `fields` is a dict of {api_key: value} to PATCH. Caller is responsible for
     only passing keys the server understands. parentId changes go via
-    set_backlog_parent for clearer error reporting; isEpic flips through here.
+    set_backlog_parent for clearer error reporting; isEpic and assignedTo flip
+    through here (assignedTo=None unassigns — spec 022).
     """
     if not fields:
-        print("specs: nothing to update — pass at least one of --title/--description/--priority/--status/--epic", file=sys.stderr)
+        print("specs: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -3261,6 +3334,7 @@ def update_backlog_item(project_id, item_ref, fields):
         sys.exit(1)
 
     if status_code not in (200, 201):
+        _print_assignee_error(status_code, body, fields.get("assignedTo"))
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -5464,7 +5538,11 @@ def main():
         set_status(args[1], args[2])
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
-        list_bugs(proj)
+        assignee_filter = None
+        for i, a in enumerate(args):
+            if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
+        if "--unassigned" in args: assignee_filter = "none"
+        list_bugs(proj, assignee_filter=assignee_filter)
     elif cmd == "view-bug":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]
@@ -5482,12 +5560,17 @@ def main():
         # Bug #15: edit affordance on the CLI to match the portal. Mirrors
         # `backlog-update` so the two flows feel consistent.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--severity": "severity"}
+        flag_map = {"--title": "title", "--description": "description", "--severity": "severity", "--assignee": "assignedTo"}
         fields = {}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
             if skip_next:
                 skip_next = False
+                continue
+            # Valueless twin of --assignee — an explicit null is the only way to
+            # say "clear" (spec 022).
+            if a == "--unassign":
+                fields["assignedTo"] = None
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
@@ -5501,8 +5584,11 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S]", file=sys.stderr)
+            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign]", file=sys.stderr)
             print(f"  Severities: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
+            sys.exit(1)
+        if "--assignee" in args and "--unassign" in args:
+            print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         update_bug(positional[0], positional[1], fields)
     elif cmd == "bug-comments":
@@ -5552,18 +5638,38 @@ def main():
             sys.exit(1)
         view_backlog(positional[0], positional[1], as_json=as_json)
     elif cmd == "backlog":
-        # Spec 013: --epics / --flat / --status / --priority
-        positional = [a for a in args[1:] if not a.startswith("--")]
+        # Spec 013: --epics / --flat / --status / --priority. Spec 022: --assignee.
+        #
+        # Value-taking flags must be skipped when collecting positionals — the
+        # old comprehension treated the *value* of a leading flag as the project
+        # id, so `backlog --status idea` (no project) looked for a project called
+        # "idea". That bites much harder now that `backlog --assignee <email>`
+        # across all projects is a thing people will type.
+        VALUE_FLAGS = {"--status", "--priority", "--assignee"}
+        positional = []
+        skip_next = False
+        for i, a in enumerate(args[1:], 1):
+            if skip_next:
+                skip_next = False
+                continue
+            if a.startswith("--"):
+                if a in VALUE_FLAGS:
+                    skip_next = True
+                continue
+            positional.append(a)
         proj = positional[0] if positional else None
         view = "tree"
         if "--epics" in args: view = "epics"
         elif "--flat" in args: view = "flat"
         status_filter = None
         priority_filter = None
+        assignee_filter = None
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
             if a == "--priority" and i + 1 < len(args): priority_filter = args[i + 1]
-        list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter)
+            if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
+        if "--unassigned" in args: assignee_filter = "none"
+        list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter, assignee_filter=assignee_filter)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False
@@ -5573,20 +5679,22 @@ def main():
                 skip_next = False
                 continue
             if a.startswith("--"):
-                if a == "--parent" and i + 1 < len(args):
+                if a in ("--parent", "--assignee") and i + 1 < len(args):
                     skip_next = True
                 continue
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee <email>]", file=sys.stderr)
             sys.exit(1)
         desc = positional[2] if len(positional) > 2 else None
         pri = positional[3] if len(positional) > 3 else "medium"
         parent_val = None
+        assignee_val = None
         for i, a in enumerate(args):
             if a == "--parent" and i + 1 < len(args): parent_val = args[i + 1]
+            if a == "--assignee" and i + 1 < len(args): assignee_val = args[i + 1]
         is_epic_flag = "--epic" in args
-        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, is_epic=is_epic_flag)
+        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, is_epic=is_epic_flag, assignee=assignee_val)
     elif cmd == "backlog-set-parent":
         if len(args) < 4:
             print("Usage: specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>", file=sys.stderr)
@@ -5596,12 +5704,17 @@ def main():
         # Bug #14: edit/delete affordance on the CLI to match the portal.
         # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic"}
+        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo"}
         fields = {}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
             if skip_next:
                 skip_next = False
+                continue
+            # --unassign is the valueless twin of --assignee; the API reads an
+            # explicit null as "clear", which no flag value could express.
+            if a == "--unassign":
+                fields["assignedTo"] = None
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
@@ -5615,7 +5728,10 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign]", file=sys.stderr)
+            sys.exit(1)
+        if "--assignee" in args and "--unassign" in args:
+            print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         # Coerce --epic value to a real bool — backend rejects strings here.
         if "isEpic" in fields:

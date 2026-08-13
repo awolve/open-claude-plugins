@@ -70,15 +70,15 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-spec:delete-doc` — Delete a document
 - `/awolve-spec:delete-feature` — Delete a feature and all its documents
 - `/awolve-spec:list-features` — List all features in a project
-- `/awolve-spec:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority` flags)
-- `/awolve-spec:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder)
+- `/awolve-spec:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned` flags)
+- `/awolve-spec:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
 - `/awolve-spec:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
-- `/awolve-spec:backlog-update` — Update title/description/priority/status on an existing item
+- `/awolve-spec:backlog-update` — Update title/description/priority/status/assignee on an existing item
 - `/awolve-spec:backlog-delete` — Soft-delete an item (cascades to children if it's an epic)
-- `/awolve-spec:bugs` — List open bugs for a project
+- `/awolve-spec:bugs` — List open bugs for a project (`--assignee`/`--unassigned` to filter by owner)
 - `/awolve-spec:view-bug` — Show full details of a single bug (description, severity, repro)
 - `/awolve-spec:bug` — Report a new bug
-- `/awolve-spec:update-bug` — Edit a bug's title, description, or severity
+- `/awolve-spec:update-bug` — Edit a bug's title, description, severity, or assignee
 - `/awolve-spec:set-bug-status` — Change a bug's status (open/triaged/in_progress/ready_for_retest/resolved/closed)
 - `/awolve-spec:bug-comments` — List comments on a bug
 - `/awolve-spec:bug-comment` — Add a comment to a bug (attach commit SHA, version, rollout notes)
@@ -114,10 +114,10 @@ Full subcommand surface:
 | `delete-feature <project-id> <feature-name>` | Delete a feature and its docs |
 | `list-features <project-id>` | List all features in a project |
 | `list-docs <project-id> <feature-name>` | List all docs in a feature |
-| `bugs <project-id>` | List open bugs (tabular summary only) |
+| `bugs [project-id] [--assignee EMAIL\|--unassigned]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
 | `view-bug <project-id> <bug-number> [--json]` | Full bug details |
 | `bug <project-id> <title> <description> [severity] [--attach file ...]` | Report a bug |
-| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S]` | Edit a bug's title, description, or severity. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. |
+| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign]` | Edit a bug's title, description, severity, or assignee. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
 | `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/ready_for_retest/resolved/closed) |
 | `bug-comments <project-id> <bug-number> [--json]` | List the comment thread on a bug (oldest-first). Comment UUIDs shown in brackets so they can be passed to edit/delete commands. |
 | `bug-comment <project-id> <bug-number> <body>` | Add a comment to a bug |
@@ -129,10 +129,10 @@ Full subcommand surface:
 | `resolve-comment <comment-id>` | Resolve a comment |
 | `reviews <file-path>` / `review <file-path> <verdict> [body]` | Read / submit reviews |
 | `versions <file-path>` / `save <file-path> <summary>` | Version history / snapshot |
-| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. |
-| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. |
+| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` forces flat view, otherwise a matching child would vanish whenever its epic didn't match too. |
+| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
 | `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Reparent an item (or pass `none` to detach). Errors include `parent_not_an_epic`, `parent_must_be_top_level`, `epic_has_children`, `child_cannot_be_epic`. |
-| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. |
+| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). |
 | `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If the item is an epic, the server cascades to all active children in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
 | `service-status` | Health check |
 | `attach <file-path> [<project-id>/<feature-name>]` | Upload binary attachment |
