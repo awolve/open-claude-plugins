@@ -17,6 +17,8 @@ Item references accept UUIDs or `#N` numeric form (with or without `#`).
 
 At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|ready_for_testing|completed|archived), `--epic` (true|false), `--assignee <email>`, `--unassign`.
 
+**Timing (spec 023, internal users only):** `--start YYYY-MM-DD`, `--due YYYY-MM-DD`, `--estimate HOURS` (0–9999.99, at most two decimals), and their valueless twins `--clear-start`, `--clear-due`, `--clear-estimate`. A start date after a due date is rejected — checked against the item's resulting state, so moving *either* date across the other fails. External users get `timing_forbidden`.
+
 Run:
 
 ```bash

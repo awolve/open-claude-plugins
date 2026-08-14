@@ -50,4 +50,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welco
 
 If you're adding several related items in one session, consider proposing one as the epic (with `--epic`) and the rest as children pointing at it via `--parent` — that way the user gets a natural tree view in the portal Backlog tab.
 
-Confirm the item was created. Mention they can promote it to a full spec later from the portal, or via `/awolve-spec:set-status` to flip its status as it moves through the workflow.
+Confirm the item was created. Mention they can spec it later with `/awolve-spec:create-feature` and record the link with `/awolve-spec:backlog-comment` (there is no promote action — see spec 023), and that `/awolve-spec:backlog-update --status` flips its status as it moves through the workflow.

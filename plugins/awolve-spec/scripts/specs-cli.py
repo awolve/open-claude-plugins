@@ -64,8 +64,6 @@ Usage:
                                        — Add a comment to a backlog item
     specs-cli.py delete-backlog-comment <project-id> <item-id-or-#N> <comment-id>
                                        — Delete a backlog comment (author or internal user)
-    specs-cli.py promote-backlog <project-id> <item-id-or-#N>
-                                       — Promote a backlog item to a feature (creates spec.md quick-spec)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
     specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned]
@@ -2053,6 +2051,127 @@ DOCUMENT_STATUSES = ["specifying", "ready", "approved"]
 # render in this sequence.
 BACKLOG_STATUSES = ["idea", "planned", "in_progress", "ready_for_testing", "completed", "archived"]
 
+# ---------------------------------------------------------------------------
+# Timing (spec 023) — start date, due date, effort estimate.
+#
+# These rules MIRROR src/lib/timing.ts in the spec service. The service does
+# not expose an overdue filter (deliberately — "today" belongs to the viewer,
+# and baking a timezone into the API would be wrong for external
+# collaborators), so the CLI derives it locally from the returned date
+# strings. That means two implementations, and they must move together.
+# ---------------------------------------------------------------------------
+
+CLEAR_TIMING_FLAGS = {
+    "--clear-start": "startDate",
+    "--clear-due": "dueDate",
+    "--clear-estimate": "estimateHours",
+}
+
+# Statuses meaning "finished" — finished work is never late.
+TIMING_TERMINAL = {
+    "backlog": ("completed", "archived"),
+    "feature": ("completed", "archived"),
+    "bug": ("resolved", "closed"),
+}
+
+# Statuses meaning "nobody has picked this up yet" — the precondition for
+# late-to-start. Features have no `planned`, and `specifying` is real work.
+TIMING_NOT_STARTED = {
+    "backlog": ("idea", "planned"),
+    "feature": ("idea", "draft"),
+    "bug": ("open", "triaged"),
+}
+
+
+def _today_iso():
+    """Today in the caller's own timezone, matching lib/timing.ts's todayISO()."""
+    return datetime.now().date().isoformat()
+
+
+def _valid_iso_date(value):
+    """YYYY-MM-DD and an actual calendar date (rejects 2026-02-30)."""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", str(value)):
+        return False
+    try:
+        # NB: this module does `from datetime import datetime`, so `datetime`
+        # is the class — strptime, not the date module's fromisoformat.
+        datetime.strptime(str(value), "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
+
+def validate_timing_fields(fields):
+    """Client-side guard so a bad value fails fast instead of round-tripping a 400."""
+    for key, flag in (("startDate", "--start"), ("dueDate", "--due")):
+        v = fields.get(key)
+        if key in fields and v is not None and not _valid_iso_date(v):
+            print(f"specs: {flag} must be a YYYY-MM-DD date; got '{v}'", file=sys.stderr)
+            sys.exit(1)
+    if "estimateHours" in fields and fields["estimateHours"] is not None:
+        raw = fields["estimateHours"]
+        try:
+            hours = float(raw)
+        except (TypeError, ValueError):
+            print(f"specs: --estimate must be a number of hours; got '{raw}'", file=sys.stderr)
+            sys.exit(1)
+        if hours < 0 or hours > 9999.99 or round(hours, 2) != hours:
+            print(f"specs: --estimate must be 0..9999.99 with at most two decimals; got '{raw}'", file=sys.stderr)
+            sys.exit(1)
+        fields["estimateHours"] = hours
+    start, due = fields.get("startDate"), fields.get("dueDate")
+    if start and due and start > due:
+        print(f"specs: --start {start} is after --due {due}", file=sys.stderr)
+        sys.exit(1)
+
+
+def timing_state(kind, item, today=None):
+    """'overdue' | 'late_to_start' | None. Overdue wins when both apply."""
+    today = today or _today_iso()
+    status = item.get("status") or ""
+    if status in TIMING_TERMINAL.get(kind, ()):
+        return None
+    due = item.get("dueDate")
+    if due and due < today:
+        return "overdue"
+    start = item.get("startDate")
+    if start and start < today and status in TIMING_NOT_STARTED.get(kind, ()):
+        return "late_to_start"
+    return None
+
+
+def matches_timing_filter(kind, item, want_overdue, want_late, today=None):
+    """
+    Tests the predicates directly rather than via timing_state: an item that is
+    both only *displays* as overdue, but --late-to-start must still find it.
+    """
+    if not want_overdue and not want_late:
+        return True
+    today = today or _today_iso()
+    status = item.get("status") or ""
+    if status in TIMING_TERMINAL.get(kind, ()):
+        return False
+    due, start = item.get("dueDate"), item.get("startDate")
+    if want_overdue and due and due < today:
+        return True
+    if want_late and start and start < today and status in TIMING_NOT_STARTED.get(kind, ()):
+        return True
+    return False
+
+
+def format_timing(item):
+    """A compact ` · due 2026-08-28 (overdue) · 8h` suffix for list rows."""
+    bits = []
+    if item.get("startDate"):
+        bits.append(f"start {item['startDate']}")
+    if item.get("dueDate"):
+        bits.append(f"due {item['dueDate']}")
+    hours = item.get("estimateHours")
+    if hours is not None:
+        h = float(hours)
+        bits.append(f"{int(h) if h == int(h) else round(h, 2)}h")
+    return (" · " + " · ".join(bits)) if bits else ""
+
 
 def set_status(identifier, new_status):
     """
@@ -2693,15 +2812,18 @@ def delete_bug_comment(project_id, bug_number, comment_id):
     print(f"specs: comment {comment_id} on bug #{number} deleted")
 
 
-def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None):
+def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
+                 overdue=False, late_to_start=False):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
       view='tree'  (default) — group items by parent: epic header + indented children
       view='epics' — show only top-level items that have at least one child
       view='flat'  — flat list, no grouping (legacy behavior)
-    Filters: optional status (single value), priority (single value), and
-    assignee (spec 022 — an email, or the literal 'none' for unassigned).
+    Filters: optional status (single value), priority (single value),
+    assignee (spec 022 — an email, or the literal 'none' for unassigned), and
+    spec 023's overdue / late-to-start, which are derived here rather than
+    server-side because "today" belongs to whoever is looking.
     """
     cfg = config.read_config()
     if not cfg:
@@ -2748,6 +2870,8 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             active = [i for i in active if i.get("priority") == priority_filter]
         if assignee_filter:
             active = _filter_by_assignee(active, assignee_filter)
+        if overdue or late_to_start:
+            active = [i for i in active if matches_timing_filter("backlog", i, overdue, late_to_start)]
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(active)} active)")
@@ -2847,8 +2971,16 @@ def _print_backlog_row(item, indent=0):
     epic_tag = "[EPIC] " if is_epic else ""
     assignee = _assignee_label(item)
     assigned = f"  · @{assignee}" if assignee else ""
+    # Spec 023: dates + estimate, with the derived state spelled out. Computed
+    # locally — the service has no overdue filter by design.
+    timing = format_timing(item)
+    state = timing_state("backlog", item)
+    if state == "overdue":
+        timing += " (OVERDUE)"
+    elif state == "late_to_start":
+        timing += " (late to start)"
     print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{histogram}")
-    print(f"       {pad}{status}{promoted}{assigned}")
+    print(f"       {pad}{status}{promoted}{assigned}{timing}")
 
 
 def _resolve_backlog_id(headers, service_url, project_id, ref):
@@ -3108,37 +3240,13 @@ def delete_backlog_comment(project_id, ref, comment_id):
     print(f"specs: deleted comment {comment_id} from backlog #{item.get('number')}")
 
 
-def promote_backlog(project_id, ref):
-    """Promote a backlog item to a feature (creates feature + quick-spec doc)."""
-    cfg = config.read_config()
-    if not cfg:
-        print("specs: no config found", file=sys.stderr)
-        sys.exit(1)
-    headers = auth.get_headers()
-    if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
-        sys.exit(1)
-    service_url = cfg["service_url"]
-
-    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
-    if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
-        sys.exit(1)
-    if item.get("featureId"):
-        print(f"specs: backlog #{item.get('number')} is already promoted to feature {item['featureId']}", file=sys.stderr)
-        sys.exit(1)
-
-    url = f"{service_url}/api/portal/backlog/{item_id}/promote"
-    sc, body = api_request(url, method="POST", headers=headers, data=None)
-    if sc not in (200, 201):
-        print(f"specs: promote failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
-        sys.exit(1)
-    resp = json.loads(body) if body else {}
-    feature_name = resp.get("featureName") or resp.get("featureId", "?")
-    print(f"specs: promoted backlog #{item.get('number')} → feature {feature_name}")
-    print(f"  feature id:  {resp.get('featureId', '?')}")
-    print(f"  document id: {resp.get('documentId', '?')}")
-    print("  next: run '/awolve-spec:pull' to materialize the spec.md file locally")
+# Spec 023: `promote_backlog` removed along with the endpoint it called. There
+# is no hard link between a backlog item and a feature any more — the
+# relationship lives in comments and descriptive text. To spec an item:
+#
+#   specs-cli.py create-feature <project> <NNN-name>
+#   specs-cli.py create-doc     <project> <NNN-name> spec.md
+#   specs-cli.py backlog-comment <project> #N "Specced as <NNN-name>"
 
 
 def restore_backlog(project_id, ref):
@@ -5564,7 +5672,8 @@ def main():
         # Bug #15: edit affordance on the CLI to match the portal. Mirrors
         # `backlog-update` so the two flows feel consistent.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--severity": "severity", "--assignee": "assignedTo"}
+        flag_map = {"--title": "title", "--description": "description", "--severity": "severity", "--assignee": "assignedTo",
+                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
         fields = {}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
@@ -5575,6 +5684,10 @@ def main():
             # say "clear" (spec 022).
             if a == "--unassign":
                 fields["assignedTo"] = None
+                continue
+            # Spec 023: same trick per timing field.
+            if a in CLEAR_TIMING_FLAGS:
+                fields[CLEAR_TIMING_FLAGS[a]] = None
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
@@ -5588,12 +5701,13 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign]", file=sys.stderr)
+            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate]", file=sys.stderr)
             print(f"  Severities: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
+        validate_timing_fields(fields)
         update_bug(positional[0], positional[1], fields)
     elif cmd == "bug-comments":
         as_json = "--json" in args
@@ -5673,7 +5787,11 @@ def main():
             if a == "--priority" and i + 1 < len(args): priority_filter = args[i + 1]
             if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
         if "--unassigned" in args: assignee_filter = "none"
-        list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter, assignee_filter=assignee_filter)
+        # Spec 023: derived locally from the returned dates.
+        overdue_filter = "--overdue" in args
+        late_filter = "--late-to-start" in args
+        list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter,
+                     assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False
@@ -5708,7 +5826,8 @@ def main():
         # Bug #14: edit/delete affordance on the CLI to match the portal.
         # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo"}
+        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo",
+                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
         fields = {}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
@@ -5719,6 +5838,10 @@ def main():
             # explicit null as "clear", which no flag value could express.
             if a == "--unassign":
                 fields["assignedTo"] = None
+                continue
+            # Spec 023: the same valueless-twin trick for each timing field.
+            if a in CLEAR_TIMING_FLAGS:
+                fields[CLEAR_TIMING_FLAGS[a]] = None
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
@@ -5732,7 +5855,7 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
@@ -5749,6 +5872,7 @@ def main():
         if "status" in fields and fields["status"] not in BACKLOG_STATUSES:
             print(f"specs: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
             sys.exit(1)
+        validate_timing_fields(fields)
         update_backlog_item(positional[0], positional[1], fields)
     elif cmd == "backlog-delete":
         if len(args) < 3:
@@ -5773,10 +5897,14 @@ def main():
             sys.exit(1)
         delete_backlog_comment(args[1], args[2], args[3])
     elif cmd == "promote-backlog":
-        if len(args) < 3:
-            print("Usage: specs-cli.py promote-backlog <project-id> <item-id-or-#N>", file=sys.stderr)
-            sys.exit(1)
-        promote_backlog(args[1], args[2])
+        # Spec 023: removed. Fail with directions rather than "unknown command",
+        # since this was the documented way to turn an item into a spec.
+        print("specs: 'promote-backlog' was removed in spec 023 — there is no hard link", file=sys.stderr)
+        print("       between a backlog item and a feature any more. Instead:", file=sys.stderr)
+        print("         specs-cli.py create-feature <project> <NNN-name>", file=sys.stderr)
+        print("         specs-cli.py create-doc     <project> <NNN-name> spec.md", file=sys.stderr)
+        print("         specs-cli.py backlog-comment <project> #N \"Specced as <NNN-name>\"", file=sys.stderr)
+        sys.exit(1)
     elif cmd == "restore-backlog":
         if len(args) < 3:
             print("Usage: specs-cli.py restore-backlog <project-id> <item-id-or-uuid>", file=sys.stderr)

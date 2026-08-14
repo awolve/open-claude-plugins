@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.36.0 — 2026-08-14
+
+**Timing flags, and `promote-backlog` removed (spec-service 0.53.0, spec 023).**
+
+- **Set timing:** `backlog-update` and `update-bug` gain `--start YYYY-MM-DD`, `--due YYYY-MM-DD`, `--estimate HOURS`, plus the valueless `--clear-start` / `--clear-due` / `--clear-estimate` (an explicit null is the only way to say "clear", same trick as `--unassign`). Validated client-side so a bad value fails fast instead of round-tripping a 400: real calendar dates only (`2026-02-30` is rejected), estimates 0–9999.99 with at most two decimals, and start never after due.
+- **Filter:** `backlog --overdue` and `backlog --late-to-start`. Both are derived locally from the returned dates — the service deliberately exposes no overdue filter, because "today" belongs to whoever is looking. An item that is both is found by either flag, though the list labels it `(OVERDUE)`.
+- **Read:** list rows and `view-backlog` / `view-bug` print the dates and estimate, with `(OVERDUE)` / `(late to start)` spelled out.
+- **`promote-backlog` is removed.** It fails with directions rather than "unknown command", since it was the documented way to turn an item into a spec. The replacement is three commands that already exist: `create-feature`, `create-doc`, then `backlog-comment` to record the connection where a human will read it. `/awolve-spec:promote-backlog` now documents why.
+
+The timing rules mirror `src/lib/timing.ts` in the service. That is two implementations of the same four-line comparison, and they must move together — noted in both files.
+
+Requires spec-service 0.53.0.
+
 ## 0.35.0 — 2026-08-14
 
 **Backlog status `ready_for_testing` (spec-service 0.52.0).** `backlog-update … --status ready_for_testing` marks an item whose work is done but which nobody has verified. It sorts between `in_progress` and `completed` in the child histograms on `backlog` and `view-backlog`, and counts as active, so it stays visible in the default list rather than disappearing the way `completed` does.

@@ -25,6 +25,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 ### Filters
 
 - **`--status STATUS`** — only show items with this status (`idea`, `planned`, `in_progress`, `ready_for_testing`, `completed`, `archived`).
+- **`--overdue`** — only items past their due date and not finished (spec 023).
+- **`--late-to-start`** — only items past their start date that nobody has picked up yet (still `idea` or `planned`). An item that is both is found by either flag, though the list labels it `(OVERDUE)`.
 - **`--priority PRIORITY`** — only show items with this priority (`low`, `medium`, `high`).
 - **`--assignee EMAIL`** — only show items assigned to that person. Matches on email, or on a fragment of their name (`--assignee bjorn` works).
 - **`--unassigned`** — only show items nobody owns.

@@ -1,5 +1,5 @@
 ---
-description: Update a bug's title, description, severity, or assignee
+description: Update a bug's title, description, severity, assignee, or timing (start/due/estimate)
 ---
 
 # /awolve-spec:update-bug
@@ -16,6 +16,8 @@ Parse the user's argument. Expected forms:
 Bug references accept the short numeric form (with or without `#`).
 
 At least one field flag is required: `--title`, `--description`, `--severity` (low|medium|high|critical), `--assignee <email>`, `--unassign`.
+
+**Timing (spec 023, internal users only):** `--start YYYY-MM-DD`, `--due YYYY-MM-DD`, `--estimate HOURS` (0–9999.99, at most two decimals), plus the valueless `--clear-start`, `--clear-due`, `--clear-estimate`. Start must not fall after due — checked against the bug's resulting state, so moving either date across the other is rejected. External users get `timing_forbidden`.
 
 Run:
 
