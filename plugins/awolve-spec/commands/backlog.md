@@ -24,7 +24,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 
 ### Filters
 
-- **`--status STATUS`** — only show items with this status (`idea`, `planned`, `in_progress`, `completed`, `archived`).
+- **`--status STATUS`** — only show items with this status (`idea`, `planned`, `in_progress`, `ready_for_testing`, `completed`, `archived`).
 - **`--priority PRIORITY`** — only show items with this priority (`low`, `medium`, `high`).
 - **`--assignee EMAIL`** — only show items assigned to that person. Matches on email, or on a fragment of their name (`--assignee bjorn` works).
 - **`--unassigned`** — only show items nobody owns.

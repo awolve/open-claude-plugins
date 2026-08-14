@@ -2048,6 +2048,10 @@ def handle_post_tool_use():
 
 FEATURE_STATUSES = ["idea", "specifying", "in_progress", "completed", "archived"]
 DOCUMENT_STATUSES = ["specifying", "ready", "approved"]
+# Backlog items have their own lifecycle (mirror of BACKLOG_STATUSES in the
+# service's StatusBadge.tsx). Order is the workflow order — the histograms below
+# render in this sequence.
+BACKLOG_STATUSES = ["idea", "planned", "in_progress", "ready_for_testing", "completed", "archived"]
 
 
 def set_status(identifier, new_status):
@@ -2834,7 +2838,7 @@ def _print_backlog_row(item, indent=0):
     histogram = ""
     counts = item.get("childStatusCounts") or {}
     if counts:
-        order = ["idea", "planned", "in_progress", "completed", "archived"]
+        order = BACKLOG_STATUSES
         parts = [f"{counts[s]} {s}" for s in order if counts.get(s)]
         histogram = " · children: " + " · ".join(parts) if parts else ""
     elif is_epic:
@@ -2973,7 +2977,7 @@ def view_backlog(project_id, ref, as_json=False):
         p_label = f"#{p_num} {parent.get('title', '')}".strip()
         print(f"  parent:    {p_label}")
     if children:
-        order = ["idea", "planned", "in_progress", "completed", "archived"]
+        order = BACKLOG_STATUSES
         cstat = {s: 0 for s in order}
         for c in children:
             s = c.get("status")
@@ -5742,8 +5746,8 @@ def main():
             fields["isEpic"] = (v == "true")
         # Guard the status enum client-side (the API also rejects it) so a bad
         # value fails fast with the valid set, instead of a round-trip 400.
-        if "status" in fields and fields["status"] not in ("idea", "planned", "in_progress", "completed", "archived"):
-            print(f"specs: --status must be one of idea, planned, in_progress, completed, archived; got '{fields['status']}'", file=sys.stderr)
+        if "status" in fields and fields["status"] not in BACKLOG_STATUSES:
+            print(f"specs: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
             sys.exit(1)
         update_backlog_item(positional[0], positional[1], fields)
     elif cmd == "backlog-delete":

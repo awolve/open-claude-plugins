@@ -15,7 +15,7 @@ Parse the user's argument. Expected forms:
 
 Item references accept UUIDs or `#N` numeric form (with or without `#`).
 
-At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|completed|archived), `--epic` (true|false), `--assignee <email>`, `--unassign`.
+At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|ready_for_testing|completed|archived), `--epic` (true|false), `--assignee <email>`, `--unassign`.
 
 Run:
 

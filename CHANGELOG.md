@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.0 — 2026-08-14
+
+**Backlog status `ready_for_testing` (spec-service 0.52.0).** `backlog-update … --status ready_for_testing` marks an item whose work is done but which nobody has verified. It sorts between `in_progress` and `completed` in the child histograms on `backlog` and `view-backlog`, and counts as active, so it stays visible in the default list rather than disappearing the way `completed` does.
+
+The four hardcoded copies of the status list (client-side validator, its error message, and two histogram orderings) collapse into one `BACKLOG_STATUSES` constant next to `FEATURE_STATUSES` and `BUG_STATUSES`.
+
+Requires spec-service 0.52.0 — earlier deployments reject the value with a 400.
+
 ## 0.34.0 — 2026-08-13
 
 **Assignment (spec-service 0.51.0).** Backlog items and bugs can carry an assignee, and the CLI can set, clear, and filter on it.
