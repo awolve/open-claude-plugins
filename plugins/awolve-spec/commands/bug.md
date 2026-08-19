@@ -13,12 +13,13 @@ Gather these from the user:
 2. **Title** — short summary of the bug (required)
 3. **Description** — detailed description of what went wrong (required). Supports markdown.
 4. **Severity** — low, medium (default), high, or critical
-5. **Screenshots** — if the user pasted a screenshot in the conversation, save it to a temp file and attach it
+5. **Tags** (optional) — if the user labels the report ("this is another billing one"), pass `--tags billing`, comma-separated for several. The tags must already exist on the project: run `/awolve-spec:tags` to see them, `/awolve-spec:tag-create` to coin one first. Tags can also be added after the fact with `/awolve-spec:update-bug --add-tag`.
+6. **Screenshots** — if the user pasted a screenshot in the conversation, save it to a temp file and attach it
 
 To attach images, use `--attach`:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bug "<project-id>" "<title>" "<description>" "<severity>" --attach /path/to/screenshot.png
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bug "<project-id>" "<title>" "<description>" "<severity>" --attach /path/to/screenshot.png [--tags a,b]
 ```
 
 Multiple images: add `--attach <path>` for each one. Images are base64-encoded into the bug description.

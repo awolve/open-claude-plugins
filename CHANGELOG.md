@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.37.0 — 2026-08-19
+
+**Tags (spec-service 0.58.0, spec 027).** Per-project labels on backlog items and bugs — one vocabulary shared by both kinds, so a `regression` tag means the same thing wherever it appears in that project.
+
+- **Manage:** `/awolve-spec:tags` lists a project's tags with usage split between backlog and bugs (read this before coining a new one — it is how you spot a near-duplicate). `/awolve-spec:tag-create`, `:tag-update`, `:tag-delete` cover the rest. Renaming keeps the tag on everything it is already applied to.
+- **The nudge:** `tag-create` refuses a name close to one that already exists, prints the near-matches, and exits **2** — distinct from 1 for a genuine failure, so a script can tell "stop and look at these" apart from "this broke". `--force` creates it anyway. An exact match is a no-op that reports the existing tag, not an error. The skill tells Claude to show the suggestions rather than reach straight for `--force`.
+- **Apply:** `--tags a,b` on `backlog-add` and `bug`; `--tags` (replace), `--add-tag T` / `--remove-tag T` (repeatable), and `--clear-tags` on `backlog-update` and `update-bug`. Tags must already exist — an unknown name fails with `tag_not_found` and close matches, because coining one is a separate, permission-gated act.
+- **Filter:** `--tag TAG` on `backlog` and `bugs`, repeatable and OR-ed, matching slug or display name (`--tag "Needs UX"` and `--tag needs-ux` are the same filter), plus `--untagged`. As with `--assignee`, a tag filter forces the backlog into flat view: in tree view a matching child is only rendered under a surviving parent, so a filter would silently drop matches whose epic is not tagged.
+- **Read:** tags appear in every list row and in `view-backlog` / `view-bug`.
+
+Applying a tag needs only the right to edit the item, so a bug reporter can label their own report; creating and renaming tags needs the developer or admin role.
+
 ## 0.36.0 — 2026-08-14
 
 **Timing flags, and `promote-backlog` removed (spec-service 0.53.0, spec 023).**

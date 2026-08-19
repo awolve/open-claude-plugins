@@ -13,7 +13,7 @@ Determine the project. If the user specifies one, use it; if exactly one project
 Run with optional flags:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
 ```
 
 ### View modes (default: tree)
@@ -30,21 +30,23 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 - **`--priority PRIORITY`** — only show items with this priority (`low`, `medium`, `high`).
 - **`--assignee EMAIL`** — only show items assigned to that person. Matches on email, or on a fragment of their name (`--assignee bjorn` works).
 - **`--unassigned`** — only show items nobody owns.
+- **`--tag TAG`** — only show items carrying that tag. Repeatable and OR-ed: `--tag billing --tag auth` shows items with either. Matches on slug or display name, so `--tag "Needs UX"` and `--tag needs-ux` are the same filter.
+- **`--untagged`** — only show items with no tags at all. Combines with `--tag` as another OR arm, which answers "the ones I've labelled, plus the ones I haven't got to".
 
 The default view filters out `completed` and `archived` items so you see active work only. Pass `--status completed` to see them explicitly.
 
-An assignee filter switches the output to flat view automatically: in tree view a matching child would be hidden whenever its epic didn't match too, which silently under-reports what someone is carrying.
+An assignee or tag filter switches the output to flat view automatically: in tree view a matching child would be hidden whenever its epic didn't match too, which silently under-reports what someone is carrying.
 
 Omitting the project id runs the filter across every configured project — that's the way to answer "what is on my plate everywhere".
 
 ### Output format
 
-Each row shows priority marker (`!!!` high, `!!` medium, `!` low), the item number (`#42`), the title, the status, and the assignee as `· @Name` when the item has one. Epic rows are prefixed with `[EPIC]` and include a child status histogram inline; empty epics (no children yet) show `· (no items yet)`:
+Each row shows priority marker (`!!!` high, `!!` medium, `!` low), the item number (`#42`), the title, any tags as `#name`, the status, and the assignee as `· @Name` when the item has one. Epic rows are prefixed with `[EPIC]` and include a child status histogram inline; empty epics (no children yet) show `· (no items yet)`:
 
 ```
   [!!] #5 [EPIC] User onboarding · children: 2 idea · 1 in_progress · 3 completed
        in_progress
-    [!!] #6 Email verification flow
+    [!!] #6 Email verification flow  #auth #needs-ux
          in_progress  · @Michael Dovland
     [!] #7 Welcome screen copy
          completed

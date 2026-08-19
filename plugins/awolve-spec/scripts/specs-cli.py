@@ -45,17 +45,21 @@ Usage:
                                        — List all documents in a feature
     specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
                                        — One-call snapshot: feature status, doc statuses, unresolved comment counts
-    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned]
+    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
                                        — List backlog items (default: tree view, grouped by epic;
-                                         --assignee forces flat view so no match is hidden under a filtered-out epic)
+                                         --assignee and --tag force flat view so no match is hidden
+                                         under a filtered-out epic; --tag is repeatable and OR-ed)
     specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]
                                        — Show full details of a single backlog item (description, parent, etc.)
-    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--assignee EMAIL]
-                                       — Create a backlog item; optional --parent makes it a child of an epic
+    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--assignee EMAIL] [--tags a,b]
+                                       — Create a backlog item; optional --parent makes it a child of an epic.
+                                         --tags applies existing tags (create them first with tag-create)
     specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>
                                        — Reparent a backlog item (or pass 'none' to clear the parent)
     specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL|--unassign]
-                                       — Update fields on an existing backlog item
+                                       [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
+                                       — Update fields on an existing backlog item.
+                                         --tags replaces the set; --add-tag/--remove-tag are repeatable deltas
     specs-cli.py backlog-delete <project-id> <item-id-or-#N>
                                        — Soft-delete a backlog item (cascades to children)
     specs-cli.py backlog-comments <project-id> <item-id-or-#N> [--json]
@@ -66,15 +70,18 @@ Usage:
                                        — Delete a backlog comment (author or internal user)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
-    specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned]
-                                       — List open bugs for a project (or all configured projects)
-    specs-cli.py bug <project-id> <title> <description> [severity] — Create a bug
+    specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
+                                       — List open bugs for a project (or all configured projects);
+                                         --tag is repeatable and OR-ed
+    specs-cli.py bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]
+                                       — Create a bug
     specs-cli.py view-bug <project-id> <bug-number> [--json]
                                        — Show full details of a single bug (description, severity, repro, etc.)
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
-                                       — Edit a bug's title, description, severity, or assignee
+                                       [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
+                                       — Edit a bug's title, description, severity, assignee, or tags
     specs-cli.py bug-comments <project-id> <bug-number> [--json]
                                        — List comments on a bug
     specs-cli.py bug-comment <project-id> <bug-number> <body>
@@ -85,6 +92,15 @@ Usage:
                                        — Delete a bug comment (author or internal user). Hard delete, audited.
     specs-cli.py delete-bug <project-id> <bug-number>
                                        — Soft-delete a bug (internal users only)
+    specs-cli.py tags <project-id> [--json]
+                                       — List a project's tags with how many items wear each one
+    specs-cli.py tag-create <project-id> <name> [--color C] [--description D] [--force]
+                                       — Create a tag. Refuses (exit 2) and lists close matches when a
+                                         similar tag already exists; --force creates it anyway
+    specs-cli.py tag-update <project-id> <tag> [--name N] [--color C] [--description D] [--force]
+                                       — Rename, recolour, or re-describe a tag. Assignments are kept
+    specs-cli.py tag-delete <project-id> <tag> [--force]
+                                       — Delete a tag. A tag in use needs --force, which detaches it everywhere
     specs-cli.py comments <file-path>  — List comments on a spec document
     specs-cli.py comment <file-path> <body> [--inline --anchor <text>]
                                        — Add a comment to a spec document
@@ -126,6 +142,7 @@ import shutil
 import sys
 import tempfile
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
@@ -2304,11 +2321,320 @@ BUG_SEVERITIES = ["low", "medium", "high", "critical"]
 BUG_STATUSES = ["open", "triaged", "in_progress", "ready_for_retest", "resolved", "closed"]
 
 
-def list_bugs(project_id=None, assignee_filter=None):
+# --- Tags (spec 027) ---
+#
+# Tags are per-project labels shared by backlog items and bugs. The service
+# owns the vocabulary and the near-duplicate check; the CLI's job is to make
+# the nudge readable in a terminal and to turn --add-tag/--remove-tag into the
+# replace-set the API actually takes.
+
+TAG_COLORS = ["slate", "blue", "teal", "green", "amber", "orange", "red", "pink", "violet"]
+
+
+def _slugify_tag(raw):
+    """Identity form of a tag name. Mirrors slugifyTag() in the service."""
+    s = unicodedata.normalize("NFC", str(raw or "").lower())
+    s = re.sub(r"[^\w]+", "-", s, flags=re.UNICODE)
+    s = s.replace("_", "-")
+    s = re.sub(r"-+", "-", s)
+    return s.strip("-")
+
+
+def _tag_names(item):
+    """The tag names on a backlog item or bug, in display order."""
+    return [t.get("name") or t.get("slug") or "" for t in (item.get("tags") or [])]
+
+
+def _tag_suffix(item):
+    """Compact one-line tag rendering for list rows: '  #billing #auth'."""
+    names = _tag_names(item)
+    if not names:
+        return ""
+    return "  " + " ".join(f"#{n}" for n in names)
+
+
+def _matches_tag_filter(item, tag_filters, untagged=False):
+    """Client-side tag filter, matching the portal's OR semantics.
+
+    Filters are compared on slug, so `--tag "Needs UX"` and `--tag needs-ux`
+    behave the same. `untagged` ORs in the rows carrying no labels at all.
+    """
+    if not tag_filters and not untagged:
+        return True
+    present = {t.get("slug") for t in (item.get("tags") or [])}
+    if untagged and not present:
+        return True
+    return any(_slugify_tag(f) in present for f in tag_filters)
+
+
+def _fetch_project_tags(headers, service_url, project_id, usage=False):
+    """The project's tag vocabulary. Returns (tags, can_manage) or (None, False)."""
+    suffix = "?usage=1" if usage else ""
+    url = f"{service_url}/api/portal/projects/{project_id}/tags{suffix}"
+    try:
+        status_code, body = api_request(url, headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to fetch tags for '{project_id}' — {e}", file=sys.stderr)
+        return None, False
+    if status_code != 200:
+        print(f"specs: failed to fetch tags for '{project_id}' (HTTP {status_code})", file=sys.stderr)
+        return None, False
+    payload = json.loads(body)
+    return payload.get("tags", []), bool(payload.get("canManage"))
+
+
+def _resolve_tag(headers, service_url, project_id, ref):
+    """Resolve a tag reference (uuid, slug, or display name) to its row."""
+    tags, _ = _fetch_project_tags(headers, service_url, project_id)
+    if tags is None:
+        return None
+    slug = _slugify_tag(ref)
+    for t in tags:
+        if t.get("id") == ref or t.get("slug") == slug:
+            return t
+    print(f"specs: no tag '{ref}' in '{project_id}'", file=sys.stderr)
+    close = [t for t in tags if slug and (slug in t.get("slug", "") or t.get("slug", "") in slug)]
+    if close:
+        print(f"  did you mean: {', '.join(t.get('name', '') for t in close[:5])}", file=sys.stderr)
+    return None
+
+
+def _print_tag_suggestions(payload, prefix="  "):
+    """Render the service's similar-tag nudge as readable terminal output."""
+    suggestions = payload.get("suggestions") or []
+    if not suggestions:
+        return
+    print(f"{prefix}similar tags already exist:", file=sys.stderr)
+    for s in suggestions:
+        tag = s.get("tag") or {}
+        reason = s.get("reason", "")
+        print(f"{prefix}  #{tag.get('name', tag.get('slug', '?'))}  ({reason})", file=sys.stderr)
+
+
+def _require_config_and_auth():
+    """Config + auth headers, or exit. Every tag command starts with this."""
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    return cfg, headers
+
+
+def list_tags(project_id, as_json=False):
+    """List a project's tags with how many items wear each one."""
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+
+    tags, can_manage = _fetch_project_tags(headers, service_url, project_id, usage=True)
+    if tags is None:
+        sys.exit(1)
+
+    if as_json:
+        print(json.dumps({"tags": tags, "canManage": can_manage}, indent=2, ensure_ascii=False))
+        return
+
+    print(f"specs: {len(tags)} tag(s) in '{project_id}'")
+    if not tags:
+        print("  (none yet — create one with tag-create)")
+        return
+    print()
+    width = max((len(t.get("name", "")) for t in tags), default=4)
+    for t in tags:
+        name = t.get("name", "?")
+        usage = t.get("usageCount", 0)
+        backlog = t.get("backlogCount", 0)
+        bugs = t.get("bugCount", 0)
+        breakdown = f"{backlog} backlog · {bugs} bug(s)" if usage else "unused"
+        print(f"  #{name.ljust(width)}  {t.get('color', '?'):<7} {breakdown}")
+        desc = t.get("description")
+        if desc:
+            print(f"   {' ' * width}  {desc}")
+    if not can_manage:
+        print("\n  (read-only — creating and renaming tags needs the developer or admin role)")
+
+
+def create_tag(project_id, name, color=None, description=None, force=False):
+    """Create a tag, surfacing the service's near-duplicate nudge."""
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+
+    payload = {"name": name}
+    if color:
+        if color not in TAG_COLORS:
+            print(f"specs: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
+            sys.exit(1)
+        payload["color"] = color
+    if description:
+        payload["description"] = description
+    if force:
+        payload["force"] = True
+
+    url = f"{service_url}/api/portal/projects/{project_id}/tags"
+    try:
+        status_code, body = api_request(url, method="POST", headers=headers, data=payload)
+    except ConnectionError as e:
+        print(f"specs: failed to create tag — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code == 409:
+        # The whole point of the feature: stop, show what already exists, and
+        # let the human decide. Exit non-zero so a script doesn't sail past it.
+        data = json.loads(body)
+        print(f"specs: not creating '{name}' — a similar tag already exists", file=sys.stderr)
+        _print_tag_suggestions(data)
+        print("  reuse one of those, or repeat with --force to create it anyway", file=sys.stderr)
+        sys.exit(2)
+
+    if status_code not in (200, 201):
+        print(f"specs: failed to create tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(body)
+    tag = data.get("tag", {})
+    if data.get("created") is False:
+        print(f"specs: tag '#{tag.get('name')}' already exists in '{project_id}'")
+    else:
+        print(f"specs: created tag '#{tag.get('name')}' ({tag.get('color')}) in '{project_id}'")
+
+
+def update_tag(project_id, ref, name=None, color=None, description=None, force=False):
+    """Rename, recolour, or re-describe a tag. Assignments are preserved."""
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+
+    tag = _resolve_tag(headers, service_url, project_id, ref)
+    if not tag:
+        sys.exit(1)
+
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if color is not None:
+        if color not in TAG_COLORS:
+            print(f"specs: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
+            sys.exit(1)
+        payload["color"] = color
+    if description is not None:
+        payload["description"] = description
+    if not payload:
+        print("specs: nothing to update — pass --name, --color, or --description", file=sys.stderr)
+        sys.exit(1)
+    if force:
+        payload["force"] = True
+
+    url = f"{service_url}/api/portal/tags/{tag['id']}"
+    try:
+        status_code, body = api_request(url, method="PATCH", headers=headers, data=payload)
+    except ConnectionError as e:
+        print(f"specs: failed to update tag — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code == 409:
+        data = json.loads(body)
+        if data.get("error") == "tag_slug_taken":
+            print(f"specs: {data.get('detail', 'that name is already taken')}", file=sys.stderr)
+        else:
+            print(f"specs: not renaming '{tag.get('name')}' — a similar tag already exists", file=sys.stderr)
+            _print_tag_suggestions(data)
+            print("  repeat with --force to rename anyway", file=sys.stderr)
+        sys.exit(2)
+
+    if status_code != 200:
+        print(f"specs: failed to update tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        sys.exit(1)
+
+    updated = json.loads(body)
+    print(f"specs: updated tag '#{updated.get('name')}' in '{project_id}'")
+
+
+def delete_tag(project_id, ref, force=False):
+    """Delete a tag. A tag in use needs --force, which detaches it everywhere."""
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+
+    tag = _resolve_tag(headers, service_url, project_id, ref)
+    if not tag:
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/tags/{tag['id']}" + ("?force=1" if force else "")
+    try:
+        status_code, body = api_request(url, method="DELETE", headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to delete tag — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code == 409:
+        data = json.loads(body)
+        print(f"specs: {data.get('detail', 'tag is in use')}", file=sys.stderr)
+        sys.exit(2)
+    if status_code != 200:
+        print(f"specs: failed to delete tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(body)
+    detached = data.get("detachedFrom", 0)
+    tail = f" (removed from {detached} item(s))" if detached else ""
+    print(f"specs: deleted tag '#{tag.get('name')}' from '{project_id}'{tail}")
+
+
+def _resolve_tag_edit(current_tags, replace=None, add=None, remove=None, clear=False):
+    """Turn --tags/--add-tag/--remove-tag/--clear-tags into a replace-set.
+
+    The API takes the resulting set, not a delta, so add/remove are applied
+    against whatever the item wears right now. Returns a list of slugs/names
+    the service will resolve, or None when no tag flag was passed at all
+    (which must leave the item's tags untouched).
+    """
+    if clear:
+        return []
+    if replace is not None:
+        return [v for v in (s.strip() for s in replace.split(",")) if v]
+    if not add and not remove:
+        return None
+
+    current = [t.get("slug") for t in (current_tags or [])]
+    removed = {_slugify_tag(r) for r in (remove or [])}
+    result = [s for s in current if s not in removed]
+    for a in (add or []):
+        slug = _slugify_tag(a)
+        if slug not in result:
+            # Keep what the user typed: an unknown name should come back as a
+            # `tag_not_found` naming their word, not a slug they never wrote.
+            result.append(a)
+    return result
+
+
+def _print_tag_error(status_code, body):
+    """Explain a tag_not_found rejection, with the service's suggestions."""
+    if status_code != 400:
+        return False
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if data.get("error") != "tag_not_found":
+        return False
+    unknown = ", ".join(data.get("unknown") or [])
+    print(f"specs: no such tag: {unknown}", file=sys.stderr)
+    _print_tag_suggestions(data)
+    print("  create it first with `tag-create`, or use an existing tag", file=sys.stderr)
+    return True
+
+
+def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False):
     """List bugs for a project or all configured projects.
 
     `assignee_filter` (spec 022) is an email or name fragment, or the literal
     'none'/'unassigned' for bugs nobody owns.
+
+    `tag_filters` (spec 027) is a list of tag slugs or names, OR-ed together;
+    `untagged` ORs in the bugs carrying no labels. Filtered here rather than
+    server-side, like every other filter in this CLI — the list is already in
+    hand, and the service has no tag query parameter by design.
     """
     cfg = config.read_config()
     if not cfg:
@@ -2345,6 +2671,8 @@ def list_bugs(project_id=None, assignee_filter=None):
         open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
         if assignee_filter:
             open_bugs = _filter_by_assignee(open_bugs, assignee_filter)
+        if tag_filters or untagged:
+            open_bugs = [b for b in open_bugs if _matches_tag_filter(b, tag_filters or [], untagged)]
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(open_bugs)} open)")
@@ -2365,7 +2693,7 @@ def list_bugs(project_id=None, assignee_filter=None):
             sev_marker = {"critical": "!!!", "high": "!!", "medium": "!", "low": "."}.get(severity, "?")
             assignee = _assignee_label(bug)
             assigned = f"  · @{assignee}" if assignee else ""
-            print(f"  #{number:<4} [{sev_marker}] {title}")
+            print(f"  #{number:<4} [{sev_marker}] {title}{_tag_suffix(bug)}")
             print(f"        {status} — reported by {reporter}{assigned}")
 
 
@@ -2493,6 +2821,9 @@ def view_bug(project_id, bug_number, as_json=False):
     print(f"  status:    {status}")
     print(f"  reporter:  {reporter}")
     print(f"  assignee:  {_assignee_label(detail) or '(unassigned)'}")
+    tag_names = _tag_names(detail)
+    if tag_names:
+        print(f"  tags:      {' '.join('#' + n for n in tag_names)}")
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
@@ -2621,14 +2952,17 @@ def _resolve_bug(project_id, bug_number):
     return cfg, headers, service_url, match
 
 
-def update_bug(project_id, bug_number, fields):
+def update_bug(project_id, bug_number, fields, tag_edit=None):
     """Update title/description/severity/assignedTo on an existing bug.
 
     `fields` is a dict of {api_key: value} to PATCH. Status changes go via
     set_bug_status for clearer audit semantics. assignedTo=None unassigns
     (spec 022); assigning needs bug:write:any on the project.
+
+    `tag_edit` (spec 027) is {replace, add, remove, clear} — see
+    update_backlog_item for why it is folded after the bug is resolved.
     """
-    if not fields:
+    if not fields and not tag_edit:
         print("specs: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
@@ -2639,6 +2973,11 @@ def update_bug(project_id, bug_number, fields):
     _, headers, service_url, bug = _resolve_bug(project_id, bug_number)
     bug_id = bug["id"]
     number = bug["number"]
+
+    if tag_edit:
+        next_tags = _resolve_tag_edit(bug.get("tags"), **tag_edit)
+        if next_tags is not None:
+            fields = {**fields, "tags": next_tags}
 
     url = f"{service_url}/api/portal/bugs/{bug_id}"
     try:
@@ -2653,6 +2992,8 @@ def update_bug(project_id, bug_number, fields):
 
     if status_code not in (200, 201):
         _print_assignee_error(status_code, body, fields.get("assignedTo"))
+        if _print_tag_error(status_code, body):
+            sys.exit(1)
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -2813,7 +3154,7 @@ def delete_bug_comment(project_id, bug_number, comment_id):
 
 
 def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
-                 overdue=False, late_to_start=False):
+                 overdue=False, late_to_start=False, tag_filters=None, untagged=False):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
@@ -2821,9 +3162,10 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
       view='epics' — show only top-level items that have at least one child
       view='flat'  — flat list, no grouping (legacy behavior)
     Filters: optional status (single value), priority (single value),
-    assignee (spec 022 — an email, or the literal 'none' for unassigned), and
+    assignee (spec 022 — an email, or the literal 'none' for unassigned),
     spec 023's overdue / late-to-start, which are derived here rather than
-    server-side because "today" belongs to whoever is looking.
+    server-side because "today" belongs to whoever is looking, and spec 027's
+    tags (slugs or names, OR-ed; `untagged` ORs in the unlabelled).
     """
     cfg = config.read_config()
     if not cfg:
@@ -2849,6 +3191,11 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
     # match. Flat view answers "what is on X's plate" honestly.
     if assignee_filter and view == "tree":
         view = "flat"
+    # Same trap as the assignee filter: in tree view a matching child is only
+    # rendered under a surviving parent, so a tag filter would silently drop
+    # matches whose epic isn't tagged.
+    if (tag_filters or untagged) and view == "tree":
+        view = "flat"
 
     for proj in projects:
         url = f"{service_url}/api/portal/projects/{proj['id']}/backlog"
@@ -2872,6 +3219,8 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             active = _filter_by_assignee(active, assignee_filter)
         if overdue or late_to_start:
             active = [i for i in active if matches_timing_filter("backlog", i, overdue, late_to_start)]
+        if tag_filters or untagged:
+            active = [i for i in active if _matches_tag_filter(i, tag_filters or [], untagged)]
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(active)} active)")
@@ -2979,7 +3328,7 @@ def _print_backlog_row(item, indent=0):
         timing += " (OVERDUE)"
     elif state == "late_to_start":
         timing += " (late to start)"
-    print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{histogram}")
+    print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{_tag_suffix(item)}{histogram}")
     print(f"       {pad}{status}{promoted}{assigned}{timing}")
 
 
@@ -3100,6 +3449,9 @@ def view_backlog(project_id, ref, as_json=False):
     print(f"  status:    {status}")
     print(f"  author:    {created_by}")
     print(f"  assignee:  {_assignee_label(item) or '(unassigned)'}")
+    tag_names = _tag_names(item)
+    if tag_names:
+        print(f"  tags:      {' '.join('#' + n for n in tag_names)}")
     if feature_id:
         ft = f" — {feature_title}" if feature_title else ""
         fs = f" [{feature_status}]" if feature_status else ""
@@ -3275,10 +3627,13 @@ def restore_backlog(project_id, ref):
     print(f"specs: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
 
 
-def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False, assignee=None):
+def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False, assignee=None, tags=None):
     """Create a new backlog item. `parent` may be a uuid or a numeric #N reference.
     `is_epic=True` marks this item as an epic (can have children, can't have a parent).
-    `assignee` is an email (spec 022) — optional, omitted means unassigned."""
+    `assignee` is an email (spec 022) — optional, omitted means unassigned.
+    `tags` (spec 027) is a list of existing tag slugs or names; coining a new
+    tag is a separate, permission-gated act, so an unknown name fails here
+    rather than quietly growing the project's vocabulary."""
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -3313,6 +3668,8 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         payload["isEpic"] = True
     if assignee:
         payload["assignedTo"] = assignee
+    if tags:
+        payload["tags"] = tags
 
     try:
         status_code, body = api_request(
@@ -3340,6 +3697,8 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
             sys.exit(1)
     if status_code not in (200, 201):
         _print_assignee_error(status_code, body, assignee)
+        if _print_tag_error(status_code, body):
+            sys.exit(1)
         print(f"specs: failed to create backlog item (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
@@ -3347,7 +3706,8 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
     kind = "epic" if is_epic else "backlog item"
     parent_note = f" under epic '{parent}'" if parent_id else ""
     assigned_note = f", assigned to {_assignee_label(item) or assignee}" if assignee else ""
-    print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}")
+    tag_note = f", tagged {' '.join('#' + n for n in _tag_names(item))}" if _tag_names(item) else ""
+    print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}{tag_note}")
 
 
 def set_backlog_parent(project_id, item_ref, parent_ref):
@@ -3405,15 +3765,20 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
         print(f"specs: '#{item.get('number')}' parent cleared (now top-level)")
 
 
-def update_backlog_item(project_id, item_ref, fields):
+def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
     """Update title/description/priority/status/isEpic/assignedTo on an item.
 
     `fields` is a dict of {api_key: value} to PATCH. Caller is responsible for
     only passing keys the server understands. parentId changes go via
     set_backlog_parent for clearer error reporting; isEpic and assignedTo flip
     through here (assignedTo=None unassigns — spec 022).
+
+    `tag_edit` (spec 027) is {replace, add, remove, clear}. The API takes the
+    resulting set rather than a delta, so add/remove are folded against the
+    item's current tags once it has been resolved — which is why this can't be
+    done by the caller before the round-trip.
     """
-    if not fields:
+    if not fields and not tag_edit:
         print("specs: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
@@ -3434,6 +3799,11 @@ def update_backlog_item(project_id, item_ref, fields):
         print(f"specs: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
+    if tag_edit:
+        next_tags = _resolve_tag_edit(item.get("tags"), **tag_edit)
+        if next_tags is not None:
+            fields = {**fields, "tags": next_tags}
+
     url = f"{service_url}/api/portal/backlog/{item_id}"
     try:
         status_code, body = api_request(
@@ -3447,6 +3817,8 @@ def update_backlog_item(project_id, item_ref, fields):
 
     if status_code not in (200, 201):
         _print_assignee_error(status_code, body, fields.get("assignedTo"))
+        if _print_tag_error(status_code, body):
+            sys.exit(1)
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -3521,8 +3893,8 @@ def _embed_images(description, image_paths):
     return description
 
 
-def create_bug(project_id, title, description, severity="medium", image_paths=None):
-    """Create a bug report, optionally with attached images."""
+def create_bug(project_id, title, description, severity="medium", image_paths=None, tags=None):
+    """Create a bug report, optionally with attached images and tags (spec 027)."""
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -3544,10 +3916,13 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
     service_url = cfg["service_url"]
 
     url = f"{service_url}/api/portal/projects/{project_id}/bugs"
+    payload = {"title": title, "description": description, "severity": severity}
+    if tags:
+        payload["tags"] = tags
     try:
         status_code, body = api_request(
             url, method="POST", headers={**headers, "Content-Type": "application/json"},
-            data={"title": title, "description": description, "severity": severity},
+            data=payload,
         )
     except ConnectionError as e:
         print(f"specs: failed to create bug — {e}", file=sys.stderr)
@@ -3568,11 +3943,16 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
             )
             sys.exit(1)
     if status_code not in (200, 201):
+        if _print_tag_error(status_code, body):
+            sys.exit(1)
         print(f"specs: failed to create bug (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     bug = json.loads(body)
+    tag_note = f"  tags: {' '.join('#' + n for n in _tag_names(bug))}" if _tag_names(bug) else ""
     print(f"specs: bug #{bug.get('number', '?')} created — {title}")
+    if tag_note:
+        print(tag_note)
     print(f"  view: {service_url}/portal/{project_id}/bugs/{bug['id']}")
 
 
@@ -5651,10 +6031,14 @@ def main():
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
         assignee_filter = None
+        tag_filters = []
         for i, a in enumerate(args):
             if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
+            # Spec 027: repeatable, OR-ed — `--tag billing --tag auth`.
+            if a == "--tag" and i + 1 < len(args): tag_filters.append(args[i + 1])
         if "--unassigned" in args: assignee_filter = "none"
-        list_bugs(proj, assignee_filter=assignee_filter)
+        list_bugs(proj, assignee_filter=assignee_filter, tag_filters=tag_filters,
+                  untagged="--untagged" in args)
     elif cmd == "view-bug":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]
@@ -5675,6 +6059,7 @@ def main():
         flag_map = {"--title": "title", "--description": "description", "--severity": "severity", "--assignee": "assignedTo",
                     "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
         fields = {}
+        tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
             if skip_next:
@@ -5689,6 +6074,24 @@ def main():
             if a in CLEAR_TIMING_FLAGS:
                 fields[CLEAR_TIMING_FLAGS[a]] = None
                 continue
+            # Spec 027: tag flags. --tags replaces the set; --add-tag and
+            # --remove-tag are repeatable deltas folded against the bug's
+            # current tags once it has been resolved.
+            if a == "--clear-tags":
+                tag_edit["clear"] = True
+                continue
+            if a in ("--tags", "--add-tag", "--remove-tag"):
+                if i + 1 >= len(args):
+                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    sys.exit(1)
+                if a == "--tags":
+                    tag_edit["replace"] = args[i + 1]
+                elif a == "--add-tag":
+                    tag_edit["add"].append(args[i + 1])
+                else:
+                    tag_edit["remove"].append(args[i + 1])
+                skip_next = True
+                continue
             if a in flag_map:
                 if i + 1 >= len(args):
                     print(f"specs: {a} requires a value", file=sys.stderr)
@@ -5701,14 +6104,18 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate]", file=sys.stderr)
+            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]", file=sys.stderr)
             print(f"  Severities: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
+        if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
+            print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
+            sys.exit(1)
         validate_timing_fields(fields)
-        update_bug(positional[0], positional[1], fields)
+        has_tag_edit = tag_edit["clear"] or tag_edit["replace"] is not None or tag_edit["add"] or tag_edit["remove"]
+        update_bug(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None)
     elif cmd == "bug-comments":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]
@@ -5735,19 +6142,24 @@ def main():
         # Parse --attach flags
         images = []
         filtered = []
+        tags_val = None
         i = 1
         while i < len(args):
             if args[i] == "--attach" and i + 1 < len(args):
                 images.append(args[i + 1])
                 i += 2
+            elif args[i] == "--tags" and i + 1 < len(args):
+                tags_val = args[i + 1]
+                i += 2
             else:
                 filtered.append(args[i])
                 i += 1
         if len(filtered) < 3:
-            print("Usage: specs-cli.py bug <project-id> <title> <description> [severity] [--attach file ...]", file=sys.stderr)
+            print("Usage: specs-cli.py bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]", file=sys.stderr)
             sys.exit(1)
         sev = filtered[3] if len(filtered) > 3 else "medium"
-        create_bug(filtered[0], filtered[1], filtered[2], sev, images or None)
+        tag_list = [t for t in (v.strip() for v in (tags_val or "").split(",")) if t] or None
+        create_bug(filtered[0], filtered[1], filtered[2], sev, images or None, tags=tag_list)
     elif cmd == "view-backlog":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]
@@ -5755,6 +6167,76 @@ def main():
             print("Usage: specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]", file=sys.stderr)
             sys.exit(1)
         view_backlog(positional[0], positional[1], as_json=as_json)
+    elif cmd == "tags":
+        as_json = "--json" in args
+        positional = [a for a in args[1:] if not a.startswith("-")]
+        if not positional:
+            print("Usage: specs-cli.py tags <project-id> [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_tags(positional[0], as_json=as_json)
+    elif cmd == "tag-create":
+        VALUE_FLAGS = {"--color", "--description"}
+        positional = []
+        color_val = None
+        desc_val = None
+        skip_next = False
+        for i, a in enumerate(args[1:], 1):
+            if skip_next:
+                skip_next = False
+                continue
+            if a.startswith("--"):
+                if a in VALUE_FLAGS:
+                    if i + 1 >= len(args):
+                        print(f"specs: {a} requires a value", file=sys.stderr)
+                        sys.exit(1)
+                    if a == "--color":
+                        color_val = args[i + 1]
+                    else:
+                        desc_val = args[i + 1]
+                    skip_next = True
+                continue
+            positional.append(a)
+        if len(positional) < 2:
+            print("Usage: specs-cli.py tag-create <project-id> <name> [--color C] [--description D] [--force]", file=sys.stderr)
+            print(f"  Colours: {', '.join(TAG_COLORS)}", file=sys.stderr)
+            sys.exit(1)
+        create_tag(positional[0], positional[1], color=color_val, description=desc_val, force="--force" in args)
+    elif cmd == "tag-update":
+        VALUE_FLAGS = {"--name", "--color", "--description"}
+        positional = []
+        name_val = None
+        color_val = None
+        desc_val = None
+        skip_next = False
+        for i, a in enumerate(args[1:], 1):
+            if skip_next:
+                skip_next = False
+                continue
+            if a.startswith("--"):
+                if a in VALUE_FLAGS:
+                    if i + 1 >= len(args):
+                        print(f"specs: {a} requires a value", file=sys.stderr)
+                        sys.exit(1)
+                    if a == "--name":
+                        name_val = args[i + 1]
+                    elif a == "--color":
+                        color_val = args[i + 1]
+                    else:
+                        desc_val = args[i + 1]
+                    skip_next = True
+                continue
+            positional.append(a)
+        if len(positional) < 2:
+            print("Usage: specs-cli.py tag-update <project-id> <tag-slug-or-name> [--name N] [--color C] [--description D] [--force]", file=sys.stderr)
+            sys.exit(1)
+        update_tag(positional[0], positional[1], name=name_val, color=color_val,
+                   description=desc_val, force="--force" in args)
+    elif cmd == "tag-delete":
+        positional = [a for a in args[1:] if not a.startswith("-")]
+        if len(positional) < 2:
+            print("Usage: specs-cli.py tag-delete <project-id> <tag-slug-or-name> [--force]", file=sys.stderr)
+            sys.exit(1)
+        delete_tag(positional[0], positional[1], force="--force" in args)
     elif cmd == "backlog":
         # Spec 013: --epics / --flat / --status / --priority. Spec 022: --assignee.
         #
@@ -5763,7 +6245,7 @@ def main():
         # id, so `backlog --status idea` (no project) looked for a project called
         # "idea". That bites much harder now that `backlog --assignee <email>`
         # across all projects is a thing people will type.
-        VALUE_FLAGS = {"--status", "--priority", "--assignee"}
+        VALUE_FLAGS = {"--status", "--priority", "--assignee", "--tag"}
         positional = []
         skip_next = False
         for i, a in enumerate(args[1:], 1):
@@ -5782,16 +6264,20 @@ def main():
         status_filter = None
         priority_filter = None
         assignee_filter = None
+        tag_filters = []
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
             if a == "--priority" and i + 1 < len(args): priority_filter = args[i + 1]
             if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
+            # Spec 027: repeatable, OR-ed.
+            if a == "--tag" and i + 1 < len(args): tag_filters.append(args[i + 1])
         if "--unassigned" in args: assignee_filter = "none"
         # Spec 023: derived locally from the returned dates.
         overdue_filter = "--overdue" in args
         late_filter = "--late-to-start" in args
         list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter,
-                     assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter)
+                     assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter,
+                     tag_filters=tag_filters, untagged="--untagged" in args)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False
@@ -5801,22 +6287,26 @@ def main():
                 skip_next = False
                 continue
             if a.startswith("--"):
-                if a in ("--parent", "--assignee") and i + 1 < len(args):
+                if a in ("--parent", "--assignee", "--tags") and i + 1 < len(args):
                     skip_next = True
                 continue
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee <email>]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee <email>] [--tags a,b]", file=sys.stderr)
             sys.exit(1)
         desc = positional[2] if len(positional) > 2 else None
         pri = positional[3] if len(positional) > 3 else "medium"
         parent_val = None
         assignee_val = None
+        tags_val = None
         for i, a in enumerate(args):
             if a == "--parent" and i + 1 < len(args): parent_val = args[i + 1]
             if a == "--assignee" and i + 1 < len(args): assignee_val = args[i + 1]
+            if a == "--tags" and i + 1 < len(args): tags_val = args[i + 1]
         is_epic_flag = "--epic" in args
-        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, is_epic=is_epic_flag, assignee=assignee_val)
+        tag_list = [t for t in (v.strip() for v in (tags_val or "").split(",")) if t] or None
+        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, is_epic=is_epic_flag,
+                            assignee=assignee_val, tags=tag_list)
     elif cmd == "backlog-set-parent":
         if len(args) < 4:
             print("Usage: specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>", file=sys.stderr)
@@ -5829,6 +6319,7 @@ def main():
         flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo",
                     "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
         fields = {}
+        tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
         skip_next = False
         for i, a in enumerate(args[1:], 1):
             if skip_next:
@@ -5843,6 +6334,24 @@ def main():
             if a in CLEAR_TIMING_FLAGS:
                 fields[CLEAR_TIMING_FLAGS[a]] = None
                 continue
+            # Spec 027: tag flags. --tags replaces the set; --add-tag and
+            # --remove-tag are repeatable deltas folded against the item's
+            # current tags once it has been resolved.
+            if a == "--clear-tags":
+                tag_edit["clear"] = True
+                continue
+            if a in ("--tags", "--add-tag", "--remove-tag"):
+                if i + 1 >= len(args):
+                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    sys.exit(1)
+                if a == "--tags":
+                    tag_edit["replace"] = args[i + 1]
+                elif a == "--add-tag":
+                    tag_edit["add"].append(args[i + 1])
+                else:
+                    tag_edit["remove"].append(args[i + 1])
+                skip_next = True
+                continue
             if a in flag_map:
                 if i + 1 >= len(args):
                     print(f"specs: {a} requires a value", file=sys.stderr)
@@ -5855,7 +6364,7 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
@@ -5872,8 +6381,12 @@ def main():
         if "status" in fields and fields["status"] not in BACKLOG_STATUSES:
             print(f"specs: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
             sys.exit(1)
+        if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
+            print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
+            sys.exit(1)
         validate_timing_fields(fields)
-        update_backlog_item(positional[0], positional[1], fields)
+        has_tag_edit = tag_edit["clear"] or tag_edit["replace"] is not None or tag_edit["add"] or tag_edit["remove"]
+        update_backlog_item(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None)
     elif cmd == "backlog-delete":
         if len(args) < 3:
             print("Usage: specs-cli.py backlog-delete <project-id> <item-id-or-#N>", file=sys.stderr)

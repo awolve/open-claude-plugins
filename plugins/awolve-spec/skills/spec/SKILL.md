@@ -70,20 +70,24 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-spec:delete-doc` — Delete a document
 - `/awolve-spec:delete-feature` — Delete a feature and all its documents
 - `/awolve-spec:list-features` — List all features in a project
-- `/awolve-spec:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned` flags)
+- `/awolve-spec:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
 - `/awolve-spec:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
 - `/awolve-spec:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
-- `/awolve-spec:backlog-update` — Update title/description/priority/status/assignee on an existing item
+- `/awolve-spec:backlog-update` — Update title/description/priority/status/assignee/tags on an existing item
 - `/awolve-spec:backlog-delete` — Soft-delete an item (cascades to children if it's an epic)
-- `/awolve-spec:bugs` — List open bugs for a project (`--assignee`/`--unassigned` to filter by owner)
+- `/awolve-spec:bugs` — List open bugs for a project (`--assignee`/`--unassigned` by owner, `--tag`/`--untagged` by label)
 - `/awolve-spec:view-bug` — Show full details of a single bug (description, severity, repro)
 - `/awolve-spec:bug` — Report a new bug
-- `/awolve-spec:update-bug` — Edit a bug's title, description, severity, or assignee
+- `/awolve-spec:update-bug` — Edit a bug's title, description, severity, assignee, or tags
 - `/awolve-spec:set-bug-status` — Change a bug's status (open/triaged/in_progress/ready_for_retest/resolved/closed)
 - `/awolve-spec:bug-comments` — List comments on a bug
 - `/awolve-spec:bug-comment` — Add a comment to a bug (attach commit SHA, version, rollout notes)
 - `/awolve-spec:edit-bug-comment` — Edit a bug comment. Author or any internal user; audited (`bug_comment.update`).
 - `/awolve-spec:delete-bug-comment` — Delete a bug comment. Author or any internal user; hard delete with audit excerpt.
+- `/awolve-spec:tags` — List a project's tags with usage counts
+- `/awolve-spec:tag-create` — Create a tag; refuses when a similar one exists, `--force` overrides
+- `/awolve-spec:tag-update` — Rename, recolour, or re-describe a tag (assignments are kept)
+- `/awolve-spec:tag-delete` — Delete a tag; `--force` detaches it from everything first
 - `/awolve-spec:edit-comment` — Edit a spec-doc comment. Author only; audited (`comment.update`).
 - `/awolve-spec:delete-comment` — Delete a spec-doc comment. Author only; hard delete with audit excerpt.
 
@@ -114,10 +118,10 @@ Full subcommand surface:
 | `delete-feature <project-id> <feature-name>` | Delete a feature and its docs |
 | `list-features <project-id>` | List all features in a project |
 | `list-docs <project-id> <feature-name>` | List all docs in a feature |
-| `bugs [project-id] [--assignee EMAIL\|--unassigned]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
+| `bugs [project-id] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
 | `view-bug <project-id> <bug-number> [--json]` | Full bug details |
-| `bug <project-id> <title> <description> [severity] [--attach file ...]` | Report a bug |
-| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign]` | Edit a bug's title, description, severity, or assignee. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
+| `bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]` | Report a bug |
+| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Edit a bug's title, description, severity, or assignee. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
 | `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/ready_for_retest/resolved/closed) |
 | `bug-comments <project-id> <bug-number> [--json]` | List the comment thread on a bug (oldest-first). Comment UUIDs shown in brackets so they can be passed to edit/delete commands. |
 | `bug-comment <project-id> <bug-number> <body>` | Add a comment to a bug |
@@ -129,11 +133,15 @@ Full subcommand surface:
 | `resolve-comment <comment-id>` | Resolve a comment |
 | `reviews <file-path>` / `review <file-path> <verdict> [body]` | Read / submit reviews |
 | `versions <file-path>` / `save <file-path> <summary>` | Version history / snapshot |
-| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` forces flat view, otherwise a matching child would vanish whenever its epic didn't match too. |
-| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
+| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` and `--tag` force flat view, otherwise a matching child would vanish whenever its epic didn't match too. `--tag` is repeatable and OR-ed. |
+| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL] [--tags a,b]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
 | `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Reparent an item (or pass `none` to detach). Errors include `parent_not_an_epic`, `parent_must_be_top_level`, `epic_has_children`, `child_cannot_be_epic`. |
-| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). |
+| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). |
 | `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If the item is an epic, the server cascades to all active children in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
+| `tags <project-id> [--json]` | List a project's tags with usage counts (backlog / bugs). Read this before coining a new one. |
+| `tag-create <project-id> <name> [--color C] [--description D] [--force]` | Create a tag. Exits 2 and lists close matches when a similar tag already exists — reuse one of those unless the user confirms otherwise; `--force` creates anyway. An exact match is a no-op, not an error. |
+| `tag-update <project-id> <tag> [--name N] [--color C] [--description D] [--force]` | Rename/recolour/re-describe. Everything already tagged keeps it. `tag_slug_taken` when the new name exists; there is no merge. |
+| `tag-delete <project-id> <tag> [--force]` | Delete a tag. In use ⇒ refuses with the count; `--force` detaches from every item. Confirm with the user first — no undo. |
 | `service-status` | Health check |
 | `attach <file-path> [<project-id>/<feature-name>]` | Upload binary attachment |
 
@@ -150,6 +158,21 @@ Service base URL lives in `~/.claude-specs/config.yaml` (`service_url`). The por
 Backlog items can be organized into one level of nesting: an **epic** (`isEpic: true`, top-level only) holds zero or more **child items** (regular items with `parentId` pointing at the epic). Epics are opt-in and explicit — created via `--epic` on `backlog-add` or via the portal modal. Empty epics are valid placeholders. Children can only be nested under explicit epics (not arbitrary top-level items).
 
 When the user asks you to add **multiple related items** in one go (e.g. "add tasks for the onboarding flow"), prefer creating an epic first via `backlog-add … --epic` and then adding the rest with `--parent <epic-#N>`. This gives them a tidy tree view in the portal Backlog tab. For one-off items, leave them top-level.
+
+### Tags
+
+Tags are free-form labels on backlog items and bugs. **One vocabulary per project**, shared by both — a `regression` tag means the same thing wherever it appears in that project, and no other project sees it.
+
+Two rules govern them, and they pull in opposite directions on purpose:
+
+- **Applying a tag is cheap.** It needs only whatever lets you edit the item, so a bug reporter can label their own report.
+- **Coining one is not.** Creating, renaming, and deleting tags needs the developer or admin role, and `tag-create` refuses (exit code 2) when something close already exists, listing the near-matches instead.
+
+When you hit that refusal, **stop and show the user the suggestions** rather than re-running with `--force`. Reusing the existing tag is nearly always right; a vocabulary that has both `frontend` and `front-end` filters worse than one that has neither. `--force` is for the case where the near-match genuinely means something else.
+
+Tag identity is the slug — lowercase, punctuation and spaces folded to hyphens — so `Needs UX`, `needs-ux` and `needs_ux` are one tag. Names accept slugs or display forms interchangeably everywhere: `--tag "Needs UX"` and `--tag needs-ux` are the same filter.
+
+Applying a tag that does not exist fails with `tag_not_found` and close matches, rather than silently creating it. Run `tags <project-id>` first when you are unsure what the project already uses.
 
 ## Important: Always pull before reading specs
 

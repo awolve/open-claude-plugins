@@ -16,11 +16,12 @@ Ask the user for:
 - **Priority** (optional, default: `medium`) — `low`, `medium`, or `high`
 - **Parent epic** (optional) — if the user references an existing item to nest this under (e.g. "add as a child of #4" or "under the onboarding epic"), pass `--parent <id-or-#N>`
 - **Assignee** (optional) — if the user names someone to own it ("assign it to Michael"), pass `--assignee <email>`. Leave it off otherwise; unassigned is a perfectly good state for an idea.
+- **Tags** (optional) — if the user labels it ("this is a billing thing"), pass `--tags billing` (comma-separated for several). The tags must already exist on the project; run `/awolve-spec:tags` to see them and `/awolve-spec:tag-create` to coin one first.
 
 Then run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<title>" "<description>" <priority> [--parent <id-or-#N>] [--epic] [--assignee <email>]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<title>" "<description>" <priority> [--parent <id-or-#N>] [--epic] [--assignee <email>] [--tags a,b]
 ```
 
 Examples:
@@ -37,6 +38,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welco
 
 # Assigned on creation
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welcome screen copy" "" medium --assignee michael.dovland@awolve.ai
+
+# Labelled on creation (the tags must already exist)
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add my-project "Welcome screen copy" "" medium --tags onboarding,"Needs UX"
 ```
 
 `--assignee` takes an email. The person must be able to see the project — internal Awolve users always can; external users need project access first, or the create fails with `assignee_no_access`. Assignment can also be added later with `/awolve-spec:backlog-update --assignee`.

@@ -44,12 +44,12 @@ Print the following command reference. Do NOT run any scripts — just display t
 ### Backlog & Bugs
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:backlog` | List backlog items for a project (filterable by assignee) |
+| `/awolve-spec:backlog` | List backlog items for a project (filterable by assignee and tag) |
 | `/awolve-spec:backlog-add` | Add a new idea or feature request to the backlog |
-| `/awolve-spec:bugs` | List open bugs (filterable by assignee) |
+| `/awolve-spec:bugs` | List open bugs (filterable by assignee and tag) |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:view-bug` | Show full details of a single bug |
-| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, or assignee |
+| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, or tags |
 | `/awolve-spec:set-bug-status` | Change a bug's status |
 | `/awolve-spec:bug-comments` | List comments on a bug |
 | `/awolve-spec:bug-comment` | Add a comment to a bug |
@@ -57,6 +57,16 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:delete-bug-comment` | Delete a bug comment (author or internal user) |
 | `/awolve-spec:edit-comment` | Edit a spec-doc comment (author only) |
 | `/awolve-spec:delete-comment` | Delete a spec-doc comment (author only) |
+
+### Tags
+| Command | Description |
+|---------|-------------|
+| `/awolve-spec:tags` | List a project's tags and how many items wear each one |
+| `/awolve-spec:tag-create` | Create a tag (nudges you toward an existing one when close) |
+| `/awolve-spec:tag-update` | Rename, recolour, or re-describe a tag |
+| `/awolve-spec:tag-delete` | Delete a tag, optionally detaching it from every item |
+
+Tags are per-project labels shared by backlog items and bugs. Applying one needs only the right to edit the item; creating and renaming them needs the developer or admin role.
 
 ### Skill
 | Skill | Description |
