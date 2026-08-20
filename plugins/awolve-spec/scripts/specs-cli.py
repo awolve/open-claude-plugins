@@ -76,7 +76,7 @@ Usage:
                                          --tag is repeatable and OR-ed
     specs-cli.py bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]
                                        — Create a bug
-    specs-cli.py view-bug <project-id> <bug-number> [--json]
+    specs-cli.py view-bug <project-id> <bug-number> [--json] [--images [dir]]
                                        — Show full details of a single bug (description, severity, repro, etc.)
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
@@ -136,6 +136,8 @@ Usage:
 
 import hashlib
 import json
+import base64
+import binascii
 import os
 import random
 import re
@@ -2705,15 +2707,21 @@ _INLINE_IMG_RE = re.compile(
 )
 
 
-def _strip_inline_images(text):
+def _strip_inline_images(text, collect=None):
     """Replace inline base64 data-URI images with a compact placeholder.
 
     Bug/backlog bodies often carry pasted screenshots inline in the
     description as `![alt](data:image/png;base64,...)` — hundreds of KB each.
-    Dumping the raw base64 to the terminal is useless and floods the reader;
-    replace each with a one-line marker that keeps the alt text and reports
-    the decoded size, so it's obvious a screenshot exists (open the portal to
-    view it). Returns (clean_text, image_count).
+    Dumping the raw base64 to the terminal is useless and floods the reader,
+    so each becomes a one-line marker carrying the alt text and decoded size.
+
+    Pass a list as `collect` to also capture the images themselves as
+    (alt, fmt, base64) tuples. The marker used to end with "open portal to
+    view", which is no help at all to the reader most likely to be looking:
+    a terminal session that cannot open a browser. `--images` writes them to
+    files instead, and the marker now says so.
+
+    Returns (clean_text, image_count).
     """
     if not text:
         return text, 0
@@ -2726,12 +2734,110 @@ def _strip_inline_images(text):
         fmt = m.group(2)
         b64 = re.sub(r"\s+", "", m.group(3))
         kb = max(1, (len(b64) * 3 // 4) // 1024)
-        return f"[📎 {alt} — inline {fmt} image, ~{kb} KB — open portal to view]"
+        if collect is not None:
+            collect.append((alt, fmt, b64))
+        return f"[image {count}: {alt} — inline {fmt}, ~{kb} KB — save with --images]"
 
     return _INLINE_IMG_RE.sub(_repl, text), count
 
 
-def view_bug(project_id, bug_number, as_json=False):
+def _bug_image_dir(project_id, number, requested):
+    """Where saved bug images go.
+
+    A directory under the system temp dir by default: these are scratch copies
+    for reading, and they must not land inside a synced folder where a file
+    manager would try to replicate them.
+    """
+    if requested:
+        return requested
+    return os.path.join(
+        tempfile.gettempdir(), "awolve-spec-images", f"{project_id}-bug-{number}"
+    )
+
+
+def _save_bug_images(project_id, number, bug_id, inline_images, out_dir):
+    """Write every image the bug carries to disk and print the paths.
+
+    Two sources, and both used to be invisible from the terminal: screenshots
+    pasted inline into the body as data URIs, and files uploaded as
+    attachments. A reader who cannot open the portal could see that an image
+    existed but had no way to look at it.
+    """
+    target = _bug_image_dir(project_id, number, out_dir)
+    try:
+        os.makedirs(target, exist_ok=True)
+    except OSError as e:
+        print(f"specs: could not create image directory '{target}' — {e}", file=sys.stderr)
+        return
+
+    written = []
+
+    for index, (alt, fmt, b64) in enumerate(inline_images, start=1):
+        ext = "jpg" if fmt.lower() in ("jpeg", "jpg") else re.sub(r"[^a-z0-9]", "", fmt.lower()) or "png"
+        path = os.path.join(target, f"inline-{index}.{ext}")
+        try:
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(b64))
+        except (OSError, ValueError, binascii.Error) as e:
+            print(f"specs: could not save inline image {index} — {e}", file=sys.stderr)
+            continue
+        written.append((path, f"inline: {alt}"))
+
+    # Uploaded attachments. Non-images are saved too — a reader asking for the
+    # pictures usually wants whatever else was attached to the report.
+    for att in _bug_attachments(bug_id):
+        name = att.get("filename") or f"attachment-{att.get('id', '')}"
+        path = os.path.join(target, re.sub(r"[/\\]", "_", name))
+        try:
+            data, _server_name = _fetch_attachment(att["id"])
+            with open(path, "wb") as f:
+                f.write(data)
+        except SystemExit:
+            print(f"specs: could not download attachment '{name}'", file=sys.stderr)
+            continue
+        except OSError as e:
+            print(f"specs: could not save attachment '{name}' — {e}", file=sys.stderr)
+            continue
+        written.append((path, f"attachment: {att.get('contentType', '?')}"))
+
+    if not written:
+        print("\nImages: none")
+        return
+
+    print(f"\nImages ({len(written)}) saved to {target}:")
+    for path, label in written:
+        print(f"  {path}   ({label})")
+
+
+def _bug_attachments(bug_id):
+    """Attachments on a bug, or [] if they cannot be fetched.
+
+    Never fatal: a bug should still render when the attachment listing fails.
+    """
+    if not bug_id:
+        return []
+    cfg = config.read_config()
+    headers = auth.get_headers()
+    if not cfg or not headers:
+        return []
+    url = (
+        f"{cfg['service_url']}/api/portal/attachments"
+        f"?entityType=bug&entityId={urllib.parse.quote(str(bug_id), safe='')}"
+    )
+    try:
+        sc, body = api_request(url, headers=headers)
+    except ConnectionError:
+        return []
+    if sc != 200:
+        return []
+    try:
+        atts = json.loads(body)
+    except json.JSONDecodeError:
+        return []
+    return atts if isinstance(atts, list) else []
+
+
+def view_bug(project_id, bug_number, as_json=False, save_images=False, images_dir=None):
     """Show full details for a single bug by its short number."""
     cfg = config.read_config()
     if not cfg:
@@ -2808,12 +2914,16 @@ def view_bug(project_id, bug_number, as_json=False):
     status = detail.get("status", "?")
     created = detail.get("createdAt", "?")
     updated = detail.get("updatedAt", "?")
-    description, _desc_imgs = _strip_inline_images(detail.get("description") or "")
+    # Collect the inline screenshots rather than only counting them, so
+    # --images can write them out.
+    inline_images = []
+    description, _desc_imgs = _strip_inline_images(detail.get("description") or "", inline_images)
     if not description:
         description = "(no description)"
-    steps, _ = _strip_inline_images(detail.get("steps"))
-    expected, _ = _strip_inline_images(detail.get("expected"))
-    actual, _ = _strip_inline_images(detail.get("actual"))
+    steps, _ = _strip_inline_images(detail.get("steps"), inline_images)
+    expected, _ = _strip_inline_images(detail.get("expected"), inline_images)
+    actual, _ = _strip_inline_images(detail.get("actual"), inline_images)
+    attachments = _bug_attachments(bug_id)
     environment = detail.get("environment")
     comments = detail.get("comments")
     comment_count = len(comments) if isinstance(comments, list) else match.get("commentCount", 0)
@@ -2844,6 +2954,24 @@ def view_bug(project_id, bug_number, as_json=False):
     if actual:
         print("\nActual:")
         print(actual)
+
+    if attachments:
+        print(f"\nAttachments ({len(attachments)}):")
+        for att in attachments:
+            size = att.get("sizeBytes")
+            size_label = f"{size // 1024} KB" if isinstance(size, int) and size >= 1024 else f"{size} B" if isinstance(size, int) else "?"
+            print(f"  {att.get('filename', '?')}  [{att.get('contentType', '?')}, {size_label}]  id: {att.get('id', '?')}")
+
+    total_images = len(inline_images) + len(attachments)
+    if save_images:
+        _save_bug_images(project_id, number, bug_id, inline_images, images_dir)
+    elif total_images:
+        # Say how to actually look at them. Pointing at the portal is no use
+        # to a terminal session, which is where this command is usually read.
+        print(
+            f"\n{total_images} image/attachment(s) — re-run with --images to save them locally:"
+            f"\n  specs-cli.py view-bug {project_id} {number} --images"
+        )
 
 
 def set_bug_status(project_id, bug_number, status):
@@ -6110,11 +6238,32 @@ def main():
                   untagged="--untagged" in args)
     elif cmd == "view-bug":
         as_json = "--json" in args
-        positional = [a for a in args[1:] if a != "--json"]
+        save_images = "--images" in args
+        # --images may be followed by a directory; anything else after it is
+        # positional as usual.
+        images_dir = None
+        rest = args[1:]
+        positional = []
+        i = 0
+        while i < len(rest):
+            token = rest[i]
+            if token == "--json":
+                i += 1
+                continue
+            if token == "--images":
+                if i + 1 < len(rest) and not rest[i + 1].startswith("--"):
+                    images_dir = rest[i + 1]
+                    i += 2
+                else:
+                    i += 1
+                continue
+            positional.append(token)
+            i += 1
         if len(positional) < 2:
-            print("Usage: specs-cli.py view-bug <project-id> <bug-number> [--json]", file=sys.stderr)
+            print("Usage: specs-cli.py view-bug <project-id> <bug-number> [--json] [--images [dir]]", file=sys.stderr)
             sys.exit(1)
-        view_bug(positional[0], positional[1], as_json=as_json)
+        view_bug(positional[0], positional[1], as_json=as_json,
+                 save_images=save_images, images_dir=images_dir)
     elif cmd == "set-bug-status":
         if len(args) < 4:
             print("Usage: specs-cli.py set-bug-status <project-id> <bug-number> <status>", file=sys.stderr)

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.39.0 — 2026-08-20
+
+**`view-bug --images` — screenshots on a bug can finally be looked at from the terminal.**
+
+Most bug reports lead with a screenshot, and until now none of them could be read by whoever was reading the bug. They arrive two ways and both were dead ends:
+
+- **Pasted inline** into the description as a base64 data URI. These were replaced with a placeholder ending "open portal to view" — advice that is no use at all to the reader most likely to be looking, a terminal session that cannot open a browser.
+- **Uploaded as an attachment.** These were not mentioned at all. `view-bug` never listed them, so a bug whose entire evidence was an attached screenshot read as a bug with no evidence.
+
+`view-bug` now lists attachments alongside the body, counts the inline images, and takes `--images` to write every one of them to disk and print the absolute paths — ready to be opened and read. `--images <dir>` chooses the destination; the default is a per-bug folder under the system temp directory, deliberately not anywhere a file-sync client would try to replicate it. Non-image attachments are saved too, since someone asking for the pictures usually wants the rest of the evidence as well.
+
+The `/awolve-spec:view-bug` command now instructs the assistant to fetch and read the images whenever the output reports any, without waiting to be asked. Reasoning about a defect from its prose while a picture of it sits unopened is guesswork.
+
+Verified against real reports: an inline screenshot and an uploaded attachment were both saved and opened successfully.
+
 ## 0.38.1 — 2026-08-20
 
 - **Removed the `promote-backlog` command doc.** The command itself went in spec 023 (spec-service 0.53.0); the doc survived only to explain that, which meant a removed command kept appearing in the slash-command list. The CLI still answers `promote-backlog` with directions to `create-feature` + `create-doc` + `backlog-comment` rather than "unknown command", so anyone with the old muscle memory is still looked after. The full reasoning for the removal lives in spec 023.
