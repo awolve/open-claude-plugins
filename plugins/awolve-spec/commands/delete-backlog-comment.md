@@ -4,7 +4,7 @@ description: Delete a comment from a backlog item
 
 # /awolve-spec:delete-backlog-comment
 
-Remove a comment from a backlog item. Permitted for the comment's author or any internal user.
+Remove a comment from a backlog item. Only the comment's original author may delete it — internal users lost this override in spec-service 0.63.0.
 
 ## Instructions
 

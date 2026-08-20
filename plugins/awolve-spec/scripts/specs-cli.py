@@ -66,8 +66,9 @@ Usage:
                                        — List comments on a backlog item
     specs-cli.py backlog-comment <project-id> <item-id-or-#N> <body>
                                        — Add a comment to a backlog item
+    specs-cli.py edit-backlog-comment <project-id> <item-id-or-#N> <comment-id> <body>
     specs-cli.py delete-backlog-comment <project-id> <item-id-or-#N> <comment-id>
-                                       — Delete a backlog comment (author or internal user)
+                                       — Delete a backlog comment (author only)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
     specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
@@ -87,9 +88,9 @@ Usage:
     specs-cli.py bug-comment <project-id> <bug-number> <body>
                                        — Add a comment to a bug
     specs-cli.py edit-bug-comment <project-id> <bug-number> <comment-id> <body>
-                                       — Edit a bug comment (author or internal user). Audited.
+                                       — Edit a bug comment (author only). Audited.
     specs-cli.py delete-bug-comment <project-id> <bug-number> <comment-id>
-                                       — Delete a bug comment (author or internal user). Hard delete, audited.
+                                       — Delete a bug comment (author only). Hard delete, audited.
     specs-cli.py delete-bug <project-id> <bug-number>
                                        — Soft-delete a bug (internal users only)
     specs-cli.py tags <project-id> [--json]
@@ -3007,9 +3008,7 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
 
 def add_bug_comment(project_id, bug_number, body_text):
     """Add a comment to a bug by its short number."""
-    if not body_text or not body_text.strip():
-        print("specs: comment body is required", file=sys.stderr)
-        sys.exit(1)
+    _require_comment_body(body_text, "bug-comment")
 
     _, headers, service_url, bug = _resolve_bug(project_id, bug_number)
     bug_id = bug["id"]
@@ -3086,10 +3085,8 @@ def list_bug_comments(project_id, bug_number, as_json=False):
 
 
 def edit_bug_comment(project_id, bug_number, comment_id, body_text):
-    """Edit a bug comment by its UUID. Author or internal user only on the server."""
-    if not body_text or not body_text.strip():
-        print("specs: comment body is required", file=sys.stderr)
-        sys.exit(1)
+    """Edit a bug comment by its UUID. Author only on the server."""
+    _require_comment_body(body_text, "edit-bug-comment")
 
     _, headers, service_url, bug = _resolve_bug(project_id, bug_number)
     bug_id = bug["id"]
@@ -3107,7 +3104,7 @@ def edit_bug_comment(project_id, bug_number, comment_id, body_text):
         sys.exit(1)
 
     if status_code == 403:
-        print(f"specs: only the author or an internal user can edit this comment", file=sys.stderr)
+        print("specs: you can only edit your own comments", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
         print(f"specs: comment {comment_id} not found on bug #{number}", file=sys.stderr)
@@ -3124,7 +3121,7 @@ def edit_bug_comment(project_id, bug_number, comment_id, body_text):
 
 
 def delete_bug_comment(project_id, bug_number, comment_id):
-    """Delete a bug comment by its UUID. Author or internal user only. Hard delete."""
+    """Delete a bug comment by its UUID. Author only. Hard delete."""
     _, headers, service_url, bug = _resolve_bug(project_id, bug_number)
     bug_id = bug["id"]
     number = bug["number"]
@@ -3137,7 +3134,7 @@ def delete_bug_comment(project_id, bug_number, comment_id):
         sys.exit(1)
 
     if status_code == 403:
-        print(f"specs: only the author or an internal user can delete this comment", file=sys.stderr)
+        print("specs: you can only delete your own comments", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
         print(f"specs: comment {comment_id} not found on bug #{number}", file=sys.stderr)
@@ -3501,8 +3498,33 @@ def view_backlog(project_id, ref, as_json=False):
                 print(f"      {line}")
 
 
+def _require_comment_body(body_text, command):
+    """Validate a comment body, rejecting the flag-shaped ones.
+
+    Comment bodies are positional, so `backlog-comment <proj> #18 --body "..."`
+    puts the literal string "--body" in the comment and throws the real text
+    away without complaint. That is not hypothetical — it happened, and the
+    comment sat there reading "--body" until someone listed the thread.
+    A body that starts with "--" is a mistyped flag far more often than it is
+    something a person meant to say.
+    """
+    if body_text is None or not body_text.strip():
+        print("specs: comment body is required", file=sys.stderr)
+        sys.exit(1)
+    if body_text.strip().startswith("--"):
+        print(
+            f"specs: '{body_text.strip().split()[0]}' looks like a flag, not a comment.\n"
+            f"       The body is positional — pass it directly:\n"
+            f'         specs-cli.py {command} <project> <ref> "your comment"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return body_text
+
+
 def add_backlog_comment(project_id, ref, body_text):
     """Add a comment to a backlog item."""
+    _require_comment_body(body_text, "backlog-comment")
     cfg = config.read_config()
     if not cfg:
         print("specs: no config found", file=sys.stderr)
@@ -3565,6 +3587,53 @@ def list_backlog_comments(project_id, ref, as_json=False):
         for line in body.splitlines() or [""]:
             print(f"    {line}")
         print()
+
+
+def edit_backlog_comment(project_id, ref, comment_id, body_text):
+    """Edit a comment on a backlog item. Author only on the server."""
+    _require_comment_body(body_text, "edit-backlog-comment")
+
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+
+    url = f"{service_url}/api/portal/backlog/{item_id}/comments/{comment_id}"
+    try:
+        status_code, resp = api_request(
+            url, method="PATCH",
+            headers={**headers, "Content-Type": "application/json"},
+            data={"body": body_text},
+        )
+    except ConnectionError as e:
+        print(f"specs: failed to edit comment — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code == 403:
+        print("specs: you can only edit your own comments", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print(f"specs: comment {comment_id} not found on backlog #{item.get('number')}", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        try:
+            err = json.loads(resp).get("error", resp)
+        except (json.JSONDecodeError, AttributeError):
+            err = resp
+        print(f"specs: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"specs: comment {comment_id} on backlog #{item.get('number')} edited")
 
 
 def delete_backlog_comment(project_id, ref, comment_id):
@@ -6404,6 +6473,11 @@ def main():
             print("Usage: specs-cli.py backlog-comments <project-id> <item-id-or-#N> [--json]", file=sys.stderr)
             sys.exit(1)
         list_backlog_comments(positional[0], positional[1], as_json=as_json)
+    elif cmd == "edit-backlog-comment":
+        if len(args) < 5:
+            print("Usage: specs-cli.py edit-backlog-comment <project-id> <item-id-or-#N> <comment-id> <body>", file=sys.stderr)
+            sys.exit(1)
+        edit_backlog_comment(args[1], args[2], args[3], args[4])
     elif cmd == "delete-backlog-comment":
         if len(args) < 4:
             print("Usage: specs-cli.py delete-backlog-comment <project-id> <item-id-or-#N> <comment-id>", file=sys.stderr)

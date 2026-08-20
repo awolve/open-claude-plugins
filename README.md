@@ -83,6 +83,8 @@ Run `/awolve-spec:help` for the full list, or see below:
 | `/awolve-spec:backlog-add` | Add a new idea or feature request |
 | `/awolve-spec:bugs` | List open bugs |
 | `/awolve-spec:bug` | Report a new bug |
+| `/awolve-spec:edit-backlog-comment` | Edit your own comment on a backlog item |
+| `/awolve-spec:edit-bug-comment` | Edit your own comment on a bug |
 | `/awolve-spec:tags` | List a project's tags and how many items use each |
 | `/awolve-spec:tag-create` | Create a tag (warns when a similar one exists) |
 

@@ -1,10 +1,10 @@
 ---
-description: Delete a bug comment (author or internal user). Hard delete, audited.
+description: Delete a bug comment (author only). Hard delete, audited.
 ---
 
 # /awolve-spec:delete-bug-comment
 
-Delete a bug comment. The server allows the original author OR any internal Awolve user to delete. The deletion is a hard delete (no soft-delete tombstone) but a `bug_comment.delete` audit event captures the comment ID and a 100-char body excerpt.
+Delete a bug comment. Only the comment's original author may delete it — internal users lost this override in spec-service 0.63.0. The deletion is a hard delete (no soft-delete tombstone) but a `bug_comment.delete` audit event captures the comment ID and a 100-char body excerpt.
 
 ## Instructions
 

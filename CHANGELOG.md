@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.38.0 — 2026-08-20
+
+**`edit-backlog-comment`, and the comment permissions the docs were promising are no longer true.**
+
+- **New: `/awolve-spec:edit-backlog-comment <project> <ref> <comment-id> "<body>"`.** Backlog comments were the only thread type the CLI could not edit — `edit-bug-comment` and `edit-comment` already existed. Deleting and re-posting was the only way to fix a typo, and it loses the comment's place in the thread.
+
+- **Comment edit and delete are author-only, everywhere.** The service stopped letting internal users edit and delete other people's comments (spec-service 0.63.0). Five command docs, the usage text and three error messages still said "author or internal user"; they now say what the server actually does. A comment is the author's own words.
+
+- **A flag-shaped comment body is now refused instead of posted.** Comment bodies are positional, so `backlog-comment <project> #18 --body "…"` put the literal string `--body` in the comment and discarded the real text without a word. This is not hypothetical — a comment reading exactly `--body` was found in the wild and is what prompted the check. All four comment-writing commands now reject a body starting with `--` and show the positional form.
+
+- **`/awolve-spec:help` now lists every command.** It was missing 18 of them — all four backlog-comment commands, the backlog item commands (`view-backlog`, `backlog-update`, `backlog-set-parent`, `backlog-delete`, `restore-backlog`), `delete-bug`, all four attachment commands, `log`, and the sync-maintenance and marketplace commands (`conflicts`, `cleanup-synced-tree`, `update-plugins`). Attachments and Activity get their own sections, and `attach` is no longer described as feature-only — it has taken bugs and backlog items for some time. Verified both directions: every command file is listed, and every listed command exists and has a CLI dispatch. `promote-backlog` stays unlisted on purpose — it was removed in spec 023 and its doc survives only to redirect whoever still types it.
+
 ## 0.37.0 — 2026-08-19
 
 **Tags (spec-service 0.58.0, spec 027).** Per-project labels on backlog items and bugs — one vocabulary shared by both kinds, so a `regression` tag means the same thing wherever it appears in that project.
