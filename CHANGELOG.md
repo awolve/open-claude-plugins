@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.39.1 — 2026-08-20
+
+- **`bug-comments` sorts by timestamp instead of reversing the server's list.** It used to call `reversed()` on the response, with a note explaining that the server returned newest-first and the thread should read chronologically — a local fix for a problem that lived in the server. The server now returns bug comments oldest-first (spec-service 0.70.0), so that reversal would have started showing every thread backwards. Sorting by `createdAt` is correct whichever way the server orders them, which is what the original should have done: a workaround that encodes an assumption about somebody else's behaviour is a trap set for whoever changes it.
+
+- **`delete-backlog-comment` states its permission rule.** Its description was the only one of the four comment commands not saying "author only" — accurate but vague, while its siblings were specific. Inconsistent docs are how the earlier "author or internal user" drift went unnoticed.
+
 ## 0.39.0 — 2026-08-20
 
 **`view-bug --images` — screenshots on a bug can finally be looked at from the terminal.**

@@ -3186,8 +3186,14 @@ def list_bug_comments(project_id, bug_number, as_json=False):
 
     detail = json.loads(body)
     comments = detail.get("comments") or []
-    # Server returns newest-first; show oldest-first so the thread reads chronologically.
-    comments = list(reversed(comments))
+    # Always oldest-first, so the thread reads chronologically. Sorted by
+    # createdAt rather than reversed: this used to be a blind reversal of a
+    # server that returned newest-first, which meant the CLI's correctness
+    # depended on the server's ordering never changing. It changed (bugs now
+    # match backlog items and come back oldest-first), and a reversal would
+    # have quietly started showing every thread backwards. Sorting is right
+    # against either server.
+    comments = sorted(comments, key=lambda c: c.get("createdAt") or "")
 
     if as_json:
         print(json.dumps(comments, indent=2))

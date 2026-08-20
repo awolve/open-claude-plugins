@@ -1,5 +1,5 @@
 ---
-description: Delete a comment from a backlog item
+description: Delete a comment from a backlog item (author only). Hard delete, audited.
 ---
 
 # /awolve-spec:delete-backlog-comment
