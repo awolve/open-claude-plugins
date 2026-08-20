@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.1 — 2026-08-20
+
+- **Removed the `promote-backlog` command doc.** The command itself went in spec 023 (spec-service 0.53.0); the doc survived only to explain that, which meant a removed command kept appearing in the slash-command list. The CLI still answers `promote-backlog` with directions to `create-feature` + `create-doc` + `backlog-comment` rather than "unknown command", so anyone with the old muscle memory is still looked after. The full reasoning for the removal lives in spec 023.
+
 ## 0.38.0 — 2026-08-20
 
 **`edit-backlog-comment`, and the comment permissions the docs were promising are no longer true.**
