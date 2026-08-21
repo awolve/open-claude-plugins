@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.42.0 — 2026-08-21 09:31 — Björn Allvin
+
+- **`/awolve-spec:backlog-depend` and `/awolve-spec:backlog-undepend` actually exist now.** 0.40.0 added the CLI dispatch and the `--help` lines but no command files, so the two commands were listed in help and unreachable as slash commands — precisely the both-directions invariant 0.38.0 established and verified. Re-verified in both directions: every command file appears in `help.md`, every listed command has a file, and every file has a CLI dispatch.
+
+  The docs carry the part the flags cannot: the status *is* the blocked state, so a manual status on an item with unfinished dependencies will be overridden on the next recompute, and a cycle is refused at write time because from either item's own page a mutual block reads as perfectly reasonable.
+
 ## 0.41.1 — 2026-08-21 09:18 — Björn Allvin
 
 - **`/awolve-spec:update-plugins` no longer tells everyone to restart Claude Code.** It said so on every update. The mechanism is real — the plugin root is version-pinned (`…/awolve-spec/<version>`), so a running session's hooks keep executing the previous version's `specs-cli.py` — but those hooks only run `pull` and `post-tool-use`. A release that changed a backlog command is unaffected, and a restart buys nothing. `hooks.json` has changed once in 78 releases; the sync code behind it, roughly one release in six. The instruction is now conditional, and says why when it applies.

@@ -52,6 +52,8 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:view-backlog` | Show full details of a single backlog item |
 | `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, or epic flag |
 | `/awolve-spec:backlog-set-parent` | Set or clear the parent (epic) of a backlog item |
+| `/awolve-spec:backlog-depend` | Make an item wait for another (sets it Blocked) |
+| `/awolve-spec:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-spec:backlog-delete` | Soft-delete a backlog item (cascades to children) |
 | `/awolve-spec:restore-backlog` | Restore a soft-deleted backlog item (internal users only) |
 | `/awolve-spec:backlog-comments` | List comments on a backlog item |
