@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.40.0 — 2026-08-21
+
+- **The CLI knows about blocking.** The portal has had item dependencies and a `blocked` status since spec-service 0.85.0; this end knew neither. `BACKLOG_STATUSES` was missing `blocked`, and since both child-status histograms filter to known statuses, a blocked child did not appear as blocked — it disappeared from the count entirely. `backlog-update --status blocked` was rejected outright.
+
+- **`view-backlog` prints dependencies in both directions**, each with its own status and a tick when it is done. "Blocked" on its own tells you that you are stuck without telling you on what, and finding what to chase is the only reason to look.
+
+- **`backlog-depend` / `backlog-undepend`.** Dependencies could only be added in the browser, which made the feature unreachable from any session working through this script. The service keeps the consequences: it refuses a pair that would wait on each other, and it moves the status onto and off `blocked` in the same transaction. `blocked` is still settable by hand — but on an item with unfinished dependencies a manual status will not stick, and the commands say so.
+
 ## 0.39.1 — 2026-08-20
 
 - **`bug-comments` sorts by timestamp instead of reversing the server's list.** It used to call `reversed()` on the response, with a note explaining that the server returned newest-first and the thread should read chronologically — a local fix for a problem that lived in the server. The server now returns bug comments oldest-first (spec-service 0.70.0), so that reversal would have started showing every thread backwards. Sorting by `createdAt` is correct whichever way the server orders them, which is what the original should have done: a workaround that encodes an assumption about somebody else's behaviour is a trap set for whoever changes it.

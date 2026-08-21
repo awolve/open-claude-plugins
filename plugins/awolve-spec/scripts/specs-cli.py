@@ -60,6 +60,11 @@ Usage:
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        — Update fields on an existing backlog item.
                                          --tags replaces the set; --add-tag/--remove-tag are repeatable deltas
+    specs-cli.py backlog-depend <project-id> <item-id-or-#N> <blocker-id-or-#N>
+                                       — Make an item wait for another. The service sets its status to
+                                         blocked, and clears it when the last blocker is done
+    specs-cli.py backlog-undepend <project-id> <item-id-or-#N> <blocker-id-or-#N>
+                                       — Drop a dependency (restores the status the item had before)
     specs-cli.py backlog-delete <project-id> <item-id-or-#N>
                                        — Soft-delete a backlog item (cascades to children)
     specs-cli.py backlog-comments <project-id> <item-id-or-#N> [--json]
@@ -2069,7 +2074,11 @@ DOCUMENT_STATUSES = ["specifying", "ready", "approved"]
 # Backlog items have their own lifecycle (mirror of BACKLOG_STATUSES in the
 # service's StatusBadge.tsx). Order is the workflow order — the histograms below
 # render in this sequence.
-BACKLOG_STATUSES = ["idea", "planned", "in_progress", "ready_for_testing", "completed", "archived"]
+BACKLOG_STATUSES = ["idea", "planned", "blocked", "in_progress", "ready_for_testing", "completed", "archived"]
+# "blocked" is settable by hand like any other status, but it is also maintained
+# by the service: adding a dependency moves an item to blocked, and finishing
+# the last blocker puts back whatever it was before. So a manual --status on an
+# item that has unfinished dependencies will not stick.
 
 # ---------------------------------------------------------------------------
 # Timing (spec 023) — start date, due date, effort estimate.
@@ -3591,6 +3600,22 @@ def view_backlog(project_id, ref, as_json=False):
         p_num = parent.get("number")
         p_label = f"#{p_num} {parent.get('title', '')}".strip()
         print(f"  parent:    {p_label}")
+
+    # Dependencies. Printed with each one's own status, because "blocked" on
+    # its own tells you that you are stuck without telling you on what — and
+    # the whole reason to look is to find out what to chase.
+    depends_on = item.get("dependsOn") or []
+    if depends_on:
+        print("  depends on:")
+        for d in depends_on:
+            done = d.get("status") in ("completed", "archived")
+            tick = "x" if done else " "
+            print(f"    [{tick}] #{d.get('number')} {d.get('title', '')} — {d.get('status')}")
+
+    blocks = item.get("blocks") or []
+    if blocks:
+        refs = ", ".join(f"#{b.get('number')}" for b in blocks)
+        print(f"  blocking:  {refs}")
     if children:
         order = BACKLOG_STATUSES
         cstat = {s: 0 for s in order}
@@ -3684,6 +3709,57 @@ def add_backlog_comment(project_id, ref, body_text):
         sys.exit(1)
     resp = json.loads(body) if body else {}
     print(f"specs: comment added to #{item.get('number')} — id {resp.get('id', '?')}")
+
+
+def depend_backlog(project_id, ref, on_ref, remove=False):
+    """Add or remove 'this item waits for that one'.
+
+    The service owns the consequences: it rejects a dependency that would make
+    two items wait for each other, and it moves the item's status to blocked
+    (or back off it) in the same transaction. This end only resolves the two
+    references and reports what the service decided.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
+    if not item_id:
+        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    on_id, on_item = _resolve_backlog_id(headers, service_url, project_id, on_ref)
+    if not on_id:
+        print(f"specs: backlog item '{on_ref}' not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+
+    base = f"{service_url}/api/portal/backlog/{item_id}/dependencies"
+    if remove:
+        sc, body = api_request(f"{base}?dependsOnId={on_id}", method="DELETE", headers=headers)
+    else:
+        sc, body = api_request(base, method="POST", headers=headers, data={"dependsOnId": on_id})
+    if sc not in (200, 201):
+        # The cycle check and the same-project rule both come back as 400 with
+        # a sentence worth showing verbatim — it names both items.
+        detail = ""
+        try:
+            detail = (json.loads(body) or {}).get("error", "")
+        except Exception:
+            detail = (body or "")[:200]
+        print(f"specs: dependency change failed (HTTP {sc}): {detail}", file=sys.stderr)
+        sys.exit(1)
+
+    a, b = item.get("number"), on_item.get("number")
+    if remove:
+        print(f"specs: #{a} no longer depends on #{b}")
+    else:
+        print(f"specs: #{a} now depends on #{b} — {on_item.get('title', '')}")
+    print("specs: run 'view-backlog' to see the status the service settled on")
 
 
 def list_backlog_comments(project_id, ref, as_json=False):
@@ -6616,6 +6692,16 @@ def main():
             print("Usage: specs-cli.py backlog-delete <project-id> <item-id-or-#N>", file=sys.stderr)
             sys.exit(1)
         delete_backlog_item(args[1], args[2])
+    elif cmd == "backlog-depend":
+        if len(args) < 4:
+            print("Usage: specs-cli.py backlog-depend <project-id> <item-id-or-#N> <blocker-id-or-#N>", file=sys.stderr)
+            sys.exit(1)
+        depend_backlog(args[1], args[2], args[3])
+    elif cmd == "backlog-undepend":
+        if len(args) < 4:
+            print("Usage: specs-cli.py backlog-undepend <project-id> <item-id-or-#N> <blocker-id-or-#N>", file=sys.stderr)
+            sys.exit(1)
+        depend_backlog(args[1], args[2], args[3], remove=True)
     elif cmd == "backlog-comment":
         if len(args) < 4:
             print("Usage: specs-cli.py backlog-comment <project-id> <item-id-or-#N> <body>", file=sys.stderr)
