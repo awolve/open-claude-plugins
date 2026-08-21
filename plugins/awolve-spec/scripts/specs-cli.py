@@ -60,6 +60,9 @@ Usage:
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        — Update fields on an existing backlog item.
                                          --tags replaces the set; --add-tag/--remove-tag are repeatable deltas
+    specs-cli.py --version
+                                       — Print the installed plugin version (compare it with the
+                                         one the portal changelog names as latest)
     specs-cli.py backlog-depend <project-id> <item-id-or-#N> <blocker-id-or-#N>
                                        — Make an item wait for another. The service sets its status to
                                          blocked, and clears it when the last blocker is done
@@ -3472,6 +3475,21 @@ def _print_backlog_row(item, indent=0):
     print(f"       {pad}{status}{promoted}{assigned}{timing}")
 
 
+def _plugin_version():
+    """This plugin's version, read from the manifest beside the script.
+
+    The portal shows the latest published version; without this there was no
+    way to find out whether the copy you are running is that one.
+    """
+    manifest = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            ".claude-plugin", "plugin.json")
+    try:
+        with open(manifest, encoding="utf-8") as fh:
+            return json.load(fh).get("version", "unknown")
+    except Exception:
+        return "unknown"
+
+
 def _resolve_backlog_id(headers, service_url, project_id, ref):
     """Resolve a backlog reference (uuid, '#42', or '42') to its uuid id within a project.
 
@@ -6167,6 +6185,10 @@ def main():
 
     if not args or args[0] in ("--help", "-h"):
         print(__doc__.strip())
+        sys.exit(0)
+
+    if args[0] in ("--version", "-V", "version"):
+        print(_plugin_version())
         sys.exit(0)
 
     cmd = args[0]

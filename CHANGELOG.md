@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.40.0 — 2026-08-21
+## 0.41.0 — 2026-08-21 09:04 — Björn Allvin
+
+- **`specs-cli.py --version`.** The portal's changelog page names the latest published CLI version; until now there was no way to find out whether the copy you are running is that one. `--version`, `-V` and `version` all print it, read from the plugin manifest beside the script.
+
+- **Release times and authors in this file.** Every heading gained the release commit's time (Europe/Stockholm) and the name of the person who released it, backfilled from git — all 59 entries. The portal renders both. An audit against git found no invented releases here, but 17 released versions have never had an entry at all; those remain missing rather than being filled in with guesses.
+
+## 0.40.0 — 2026-08-21 08:48 — Björn Allvin
 
 - **The CLI knows about blocking.** The portal has had item dependencies and a `blocked` status since spec-service 0.85.0; this end knew neither. `BACKLOG_STATUSES` was missing `blocked`, and since both child-status histograms filter to known statuses, a blocked child did not appear as blocked — it disappeared from the count entirely. `backlog-update --status blocked` was rejected outright.
 
@@ -8,13 +14,13 @@
 
 - **`backlog-depend` / `backlog-undepend`.** Dependencies could only be added in the browser, which made the feature unreachable from any session working through this script. The service keeps the consequences: it refuses a pair that would wait on each other, and it moves the status onto and off `blocked` in the same transaction. `blocked` is still settable by hand — but on an item with unfinished dependencies a manual status will not stick, and the commands say so.
 
-## 0.39.1 — 2026-08-20
+## 0.39.1 — 2026-08-20 17:37 — Björn Allvin
 
 - **`bug-comments` sorts by timestamp instead of reversing the server's list.** It used to call `reversed()` on the response, with a note explaining that the server returned newest-first and the thread should read chronologically — a local fix for a problem that lived in the server. The server now returns bug comments oldest-first (spec-service 0.70.0), so that reversal would have started showing every thread backwards. Sorting by `createdAt` is correct whichever way the server orders them, which is what the original should have done: a workaround that encodes an assumption about somebody else's behaviour is a trap set for whoever changes it.
 
 - **`delete-backlog-comment` states its permission rule.** Its description was the only one of the four comment commands not saying "author only" — accurate but vague, while its siblings were specific. Inconsistent docs are how the earlier "author or internal user" drift went unnoticed.
 
-## 0.39.0 — 2026-08-20
+## 0.39.0 — 2026-08-20 17:31 — Björn Allvin
 
 **`view-bug --images` — screenshots on a bug can finally be looked at from the terminal.**
 
@@ -29,11 +35,11 @@ The `/awolve-spec:view-bug` command now instructs the assistant to fetch and rea
 
 Verified against real reports: an inline screenshot and an uploaded attachment were both saved and opened successfully.
 
-## 0.38.1 — 2026-08-20
+## 0.38.1 — 2026-08-20 12:26 — Björn Allvin
 
 - **Removed the `promote-backlog` command doc.** The command itself went in spec 023 (spec-service 0.53.0); the doc survived only to explain that, which meant a removed command kept appearing in the slash-command list. The CLI still answers `promote-backlog` with directions to `create-feature` + `create-doc` + `backlog-comment` rather than "unknown command", so anyone with the old muscle memory is still looked after. The full reasoning for the removal lives in spec 023.
 
-## 0.38.0 — 2026-08-20
+## 0.38.0 — 2026-08-20 12:02 — Björn Allvin
 
 **`edit-backlog-comment`, and the comment permissions the docs were promising are no longer true.**
 
@@ -45,7 +51,7 @@ Verified against real reports: an inline screenshot and an uploaded attachment w
 
 - **`/awolve-spec:help` now lists every command.** It was missing 18 of them — all four backlog-comment commands, the backlog item commands (`view-backlog`, `backlog-update`, `backlog-set-parent`, `backlog-delete`, `restore-backlog`), `delete-bug`, all four attachment commands, `log`, and the sync-maintenance and marketplace commands (`conflicts`, `cleanup-synced-tree`, `update-plugins`). Attachments and Activity get their own sections, and `attach` is no longer described as feature-only — it has taken bugs and backlog items for some time. Verified both directions: every command file is listed, and every listed command exists and has a CLI dispatch. `promote-backlog` stays unlisted on purpose — it was removed in spec 023 and its doc survives only to redirect whoever still types it.
 
-## 0.37.0 — 2026-08-19
+## 0.37.0 — 2026-08-19 08:49 — Björn Allvin
 
 **Tags (spec-service 0.58.0, spec 027).** Per-project labels on backlog items and bugs — one vocabulary shared by both kinds, so a `regression` tag means the same thing wherever it appears in that project.
 
@@ -57,7 +63,7 @@ Verified against real reports: an inline screenshot and an uploaded attachment w
 
 Applying a tag needs only the right to edit the item, so a bug reporter can label their own report; creating and renaming tags needs the developer or admin role.
 
-## 0.36.0 — 2026-08-14
+## 0.36.0 — 2026-08-14 16:42 — Björn Allvin
 
 **Timing flags, and `promote-backlog` removed (spec-service 0.53.0, spec 023).**
 
@@ -70,7 +76,7 @@ The timing rules mirror `src/lib/timing.ts` in the service. That is two implemen
 
 Requires spec-service 0.53.0.
 
-## 0.35.0 — 2026-08-14
+## 0.35.0 — 2026-08-14 14:00 — Björn Allvin
 
 **Backlog status `ready_for_testing` (spec-service 0.52.0).** `backlog-update … --status ready_for_testing` marks an item whose work is done but which nobody has verified. It sorts between `in_progress` and `completed` in the child histograms on `backlog` and `view-backlog`, and counts as active, so it stays visible in the default list rather than disappearing the way `completed` does.
 
@@ -78,7 +84,7 @@ The four hardcoded copies of the status list (client-side validator, its error m
 
 Requires spec-service 0.52.0 — earlier deployments reject the value with a 400.
 
-## 0.34.0 — 2026-08-13
+## 0.34.0 — 2026-08-13 17:08 — Björn Allvin
 
 **Assignment (spec-service 0.51.0).** Backlog items and bugs can carry an assignee, and the CLI can set, clear, and filter on it.
 
@@ -92,17 +98,17 @@ Requires spec-service 0.52.0 — earlier deployments reject the value with a 400
 
 Requires spec-service 0.51.0 — assignee fields are absent until it's deployed.
 
-## 0.33.1 — 2026-07-27
+## 0.33.1 — 2026-07-27 11:11 — Björn Allvin
 
 **`/awolve-spec:update-plugins` now actually updates the plugin.** The command only ran `claude plugin marketplace update`, which refreshes the *catalog* of available versions but never moves the installed version pin — so the command reported success while the plugin kept running its old code. It now also runs `claude plugin update` for each installed plugin from the marketplace, and documents that `claude plugin install` no-ops on an already-installed plugin.
 
 Why this matters: the plugin's `SessionStart` hook runs `specs-cli.py pull` via `${CLAUDE_PLUGIN_ROOT}`, which resolves to the *installed* plugin. A user stuck on a pre-0.19.0 pin therefore re-created in-tree `.remote` conflict sidecars on every single session start, silently, even after running the update command and `/reload-plugins`. Observed in the field on 2026-07-27: 16 sidecars regenerated across `clients/` and `operations/tools/` within seconds of each new session, surviving two cleanup passes. The "After the Update" section now also tells users to restart Claude Code, since hooks in already-running sessions keep resolving to the old plugin root.
 
-## 0.33.0 — 2026-07-21
+## 0.33.0 — 2026-07-21 10:51 — Mattias Aspelund
 
 **`feature-snapshot` subcommand.** New read-only command: `specs-cli.py feature-snapshot <project-id> <feature-name> [--json]` returns the feature's status plus, per document, its status and unresolved comment count — in a single service call (new `/api/features/lookup/snapshot` endpoint, spec service ≥ 0.50.0). Built for pollers that derive state from doc statuses: auth failure, unknown feature, and transport errors exit non-zero with distinct stderr messages. `--json` prints the raw response; without it, a compact table.
 
-## 0.32.2 — 2026-07-19
+## 0.32.2 — 2026-07-19 17:59 — Mattias Aspelund
 
 **External-user pass.** The plugin is used outside Awolve (StudyAlong; more orgs coming) — Awolve-internal conventions are now parentheticals, not prerequisites:
 
@@ -112,11 +118,11 @@ Why this matters: the plugin's `SessionStart` hook runs `specs-cli.py pull` via 
 - `infra`: the SIGL-header checklist is explicitly self-contained; the handbook path is marked Awolve-internal.
 - `/cortex-update` / `/cortex-doctor-content` mentions marked Awolve-internal.
 
-## 0.32.1 — 2026-07-19
+## 0.32.1 — 2026-07-19 17:46 — Mattias Aspelund
 
 - **plan:** implementers flip the feature to `in_progress` at the first implementation commit — adopted as the standard flow (handbook development-lifecycle.md); gives the portal a live view of what's being built.
 
-## 0.32.0 — 2026-07-19
+## 0.32.0 — 2026-07-19 17:10 — Mattias Aspelund
 
 **Process feedback codified.** A month of session analysis showed the same corrections repeated across desk/atrium/cellum work; the recurring ones now live in the plugin:
 
@@ -127,7 +133,7 @@ Why this matters: the plugin's `SessionStart` hook runs `specs-cli.py pull` via 
 - **design:** open questions are written as selected decisions (reviewer comments on disagreement only).
 - **req:** style guidance — name real users, quote interviews, describe the journey, state the target role for security scope.
 
-## 0.28.0 — 2026-07-01
+## 0.28.0 — 2026-07-01 09:45 — Björn Allvin
 
 **Run instances (spec-service 019).** A test now has multiple **runs** (executions) — re-run a regression weekly without resetting the last one.
 
@@ -137,7 +143,7 @@ Why this matters: the plugin's `SessionStart` hook runs `specs-cli.py pull` via 
 
 Requires spec-service with the spec-019 endpoints deployed (the commands 404 until then).
 
-## 0.27.0 — 2026-06-29
+## 0.27.0 — 2026-06-29 13:57 — Björn Allvin
 
 **Re-test requests (spec-service 0.44.0).** The `test` group can flag a case for re-test during a UAT:
 
@@ -147,7 +153,7 @@ Requires spec-service with the spec-019 endpoints deployed (the commands 404 unt
 
 Requires spec-service ≥ 0.44.0 deployed (the commands 404 until then).
 
-## 0.26.0 — 2026-06-29
+## 0.26.0 — 2026-06-29 13:31 — Björn Allvin
 
 **Test roles (spec-service 018).** The `test` group gained role management:
 
@@ -159,7 +165,7 @@ Requires spec-service ≥ 0.44.0 deployed (the commands 404 until then).
 
 Requires spec-service with the spec-018 endpoints deployed (the role commands 404 until then).
 
-## 0.25.0 — 2026-06-26
+## 0.25.0 — 2026-06-26 14:42 — Björn Allvin
 
 **`test reset-run` / `test reset-tester`.** Reset recorded results for a manual test run so it can be re-run from scratch — deletes results + evidence photos, re-starts the affected testers, and (whole-run) clears the sign-off. Both are destructive and require `--yes`:
 
@@ -168,18 +174,18 @@ Requires spec-service with the spec-018 endpoints deployed (the role commands 40
 
 Requires spec-service ≥ 0.40.0 (the `POST /test-runs/:id/reset` endpoint).
 
-## 0.24.0 — 2026-06-26
+## 0.24.0 — 2026-06-26 09:22 — Björn Allvin
 
 **`test run-show <run-id> --json`.** Dumps the full run as a re-importable JSON matrix — section name, caseKey, title, whatYouDo, expected, prerequisite text, and derived prerequisiteKeys (the dep edges). This closes the round-trip loop with `import-cases`: export a run, edit the case text in bulk, and re-import without losing titles, structure, or prerequisite edges. (Used to rewrite all 111 Medvind UAT guided-flow cases into richer, bullet-based markdown.)
 
-## 0.23.0 — 2026-06-25
+## 0.23.0 — 2026-06-25 22:20 — Björn Allvin
 
 **Test-case `title` + richer `run-show`.** Cases gained a name distinct from the instruction (spec-service 0.35.0):
 
 - `case-add` / `case-update` take `--title`; `import-cases` matrices carry a `title` (or `name`) column / JSON key.
 - `run-show` now prints each case's **title** (falling back to the instruction) and its **prerequisites** (`↳ prereq: do first: … — …`).
 
-## 0.22.0 — 2026-06-25
+## 0.22.0 — 2026-06-25 21:43 — Björn Allvin
 
 **Full CLI parity with the Manual Test Runs API.** The `test` group now covers every API action, not just creation:
 
@@ -192,17 +198,17 @@ Requires spec-service ≥ 0.40.0 (the `POST /test-runs/:id/reset` endpoint).
 
 Run `specs-cli.py test` with no subcommand for the grouped command list.
 
-## 0.21.0 — 2026-06-24
+## 0.21.0 — 2026-06-24 14:58 — Björn Allvin
 
 **`test run-update` command.** Edit an existing test run from the CLI: `specs-cli.py test run-update <run-id> [--name ..] [--description ..] [--status draft|active|closed|archived] [--start YYYY-MM-DD] [--end YYYY-MM-DD]`. Covers the gap where the window/status could only be set at creation. Prints the updated run and its window.
 
-## 0.20.0 — 2026-06-24
+## 0.20.0 — 2026-06-24 14:28 — Björn Allvin
 
 **`test` CLI command group** (spec-service feature 015 — Manual Test Runs).
 
 `specs-cli.py test <subcommand>` drives the new Manual Test Runs feature from the CLI — used to seed and inspect runs (e.g. importing the Medvind UAT matrix). Subcommands: `run-create`, `run-list`, `run-show`, `section-add`, `case-add`, `import-cases` (paste a section/case/what/expected matrix), `tester-add`, `coverage`, and `signoff`. Matrix parsing handles both tab- and comma-delimited input.
 
-## 0.19.0 — 2026-06-24
+## 0.19.0 — 2026-06-24 09:15 — Björn Allvin
 
 **Keep sync sidecars & build artifacts out of the synced tree** (spec-service feature 016).
 
@@ -220,7 +226,7 @@ Run `specs-cli.py test` with no subcommand for the grouped command list.
 2. The churn only fully stops once **all** machines update — until then `/cortex-doctor-content` flags any machine still depositing in-tree artifacts.
 3. One-time purge of existing junk: run `specs-cli.py cleanup-synced-tree --dry-run` to preview, then (with peers' OneDrive paused, or server-side) run it for real. Single-machine deletion loses the race against peers' session-start pulls.
 
-## 0.18.0 — 2026-06-23
+## 0.18.0 — 2026-06-23 09:54 — Björn Allvin
 
 **Support the new `ready_for_retest` bug status.**
 
@@ -228,7 +234,7 @@ The spec service added a `ready_for_retest` status (between `in_progress` and `r
 
 - `set-bug-status` now accepts `ready_for_retest`; added to the `BUG_STATUSES` allowlist, the usage text, and the `set-bug-status` / `spec` skill docs.
 
-## 0.17.3 — 2026-06-20
+## 0.17.3 — 2026-06-20 19:49 — Björn Allvin
 
 **Harden: `api_request` raises on unsupported `data` types instead of silently sending an empty body.**
 
@@ -237,7 +243,7 @@ The 0.17.2 bug was invisible because `api_request` quietly left `body_bytes=None
 - `api_request` now raises `TypeError` for any non-`None` `data` that isn't a `dict` or `str`, so a mistaken caller fails loudly at the source instead of producing an empty request.
 - The two body-less POSTs (`promote-backlog`, `restore-backlog`) now pass `data=None` instead of `data=b""`, matching the helper's contract (`None` = no body).
 
-## 0.17.2 — 2026-06-20
+## 0.17.2 — 2026-06-20 19:46 — Björn Allvin
 
 **Fix: `backlog-comment` now actually sends the comment body.**
 
@@ -245,7 +251,7 @@ The 0.17.2 bug was invisible because `api_request` quietly left `body_bytes=None
 
 - Pass `data={"body": body_text}` (a dict) so `api_request` serialises it and sets `Content-Type: application/json`, matching every other POST caller in the CLI.
 
-## 0.17.1 — 2026-06-15
+## 0.17.1 — 2026-06-15 10:14 — Björn Allvin
 
 **Fix: `view-bug` now shows the description, body fields, and screenshots.**
 
@@ -256,7 +262,7 @@ The 0.17.2 bug was invisible because `api_request` quietly left `body_bytes=None
 - `view-backlog` gets the same image-stripping treatment (it already fetched the full detail, but printed raw base64 if an item had a pasted screenshot).
 - Falls back to metadata-only (with a stderr note) if the detail fetch fails.
 
-## 0.17.0 — 2026-06-05
+## 0.17.0 — 2026-06-05 10:12 — Björn Allvin
 
 **Feat: surface backlog descriptions + close the gap between CLI and backend.**
 
@@ -280,7 +286,7 @@ Extended:
 
 Backwards-compatible: every existing command behaves identically. Slash commands added for each new subcommand.
 
-## 0.16.7 — 2026-05-28
+## 0.16.7 — 2026-05-28 14:58 — Björn Allvin
 
 **Fix: `find_project_root()` now works from inside symlinked trees.**
 
@@ -288,7 +294,7 @@ Backwards-compatible: every existing command behaves identically. Slash commands
 
 Patch tries `$PWD` (shell-tracked, preserves symlinks) before falling back to `os.getcwd()`. Both starts are walked, so behavior is unchanged when `$PWD` is unset, missing, or already resolved.
 
-## 0.16.6 — 2026-05-16
+## 0.16.6 — 2026-05-16 23:02 — Björn Allvin
 
 **Fix (specs-plugin bug #2, Option 2): skip push + writeback when body content hasn't changed.**
 
@@ -298,7 +304,7 @@ Why this matters: the unconditional writeback was a major source of OneDrive `.r
 
 Smoke-test: pushing an unchanged spec is now a true no-op (zero stdout, exit 0, mtime + inode unchanged).
 
-## 0.16.5 — 2026-05-14
+## 0.16.5 — 2026-05-14 19:45 — Björn Allvin
 
 **Fix (bug #12): add `set-title` so feature display titles can be edited without renaming the slug.**
 
@@ -314,7 +320,7 @@ New slash command `/awolve-spec:set-title`. help.md + SKILL.md updated.
 
 The bug's other concern — "rename-feature only updates slug, not display name" — was already addressed by v0.15.3 (sends title alongside name) + spec-service v0.22.x (accepts title on rename). Live-verified during this fix.
 
-## 0.16.4 — 2026-05-14
+## 0.16.4 — 2026-05-14 19:28 — Björn Allvin
 
 **Fix (paired with spec-service v0.25.2 / bug #16): clearer error when a local project isn't registered server-side.**
 
@@ -322,7 +328,7 @@ When `bug` or `backlog-add` hits a project that the spec service doesn't know ab
 
 Requires spec-service v0.25.2.
 
-## 0.16.3 — 2026-05-13
+## 0.16.3 — 2026-05-13 22:36 — Björn Allvin
 
 **Feature: edit and delete comments from the CLI, with full audit coverage.**
 
@@ -337,7 +343,7 @@ Every body edit is now audited:
 - Bug comments — `bug_comment.update` audit event (already existed; CLI just exposes it).
 - Spec-doc comments — `comment.update` audit event. Previously body edits were silent on the doc side. **Requires spec-service v0.25.1**, which adds the audit event with a 100-char preview of the previous body in `metadata.previousBodyExcerpt`.
 
-## 0.16.2 — 2026-05-13
+## 0.16.2 — 2026-05-13 22:02 — Björn Allvin
 
 **Fix (bug #15): bugs can now be edited and commented on from the CLI.**
 
@@ -349,7 +355,7 @@ Every body edit is now audited:
 
 No spec-service version bump required — backend PATCH `/api/portal/bugs/:id` and POST `/api/portal/bugs/:id/comments` already exist.
 
-## 0.16.1 — 2026-04-28
+## 0.16.1 — 2026-04-28 15:47 — Björn Allvin
 
 **Fix (bug #14): backlog items can now be edited and deleted from the CLI.**
 
@@ -358,7 +364,7 @@ No spec-service version bump required — backend PATCH `/api/portal/bugs/:id` a
 - New slash commands `/awolve-spec:backlog-update` and `/awolve-spec:backlog-delete`. The delete command instructs Claude to confirm with the user before calling — destructive and visible in the audit log.
 - SKILL.md reference table updated.
 
-## 0.16.0 — 2026-04-22
+## 0.16.0 — 2026-04-22 17:05 — Björn Allvin
 
 **Feature (spec 013): backlog hierarchy + filters + epic flag.**
 
@@ -371,25 +377,25 @@ No spec-service version bump required — backend PATCH `/api/portal/bugs/:id` a
 
 Requires spec-service v0.25.0 (adds `is_epic` column + parent validation).
 
-## 0.15.3 — 2026-04-16
+## 0.15.3 — 2026-04-16 08:13 — Björn Allvin
 
 - **Fix (bug #9): set-status refuses ambiguous bare feature names.** When a feature name like `001-base-infrastructure` exists in multiple projects, `set-status` previously silently updated the first match — wrong project, no warning. Now collects all matches first and errors with: `feature name '...' exists in multiple projects: ..., ... — use <project>/<feature> form`. The qualified form (`project/feature-name`) was already supported and continues to work.
 - **Fix (bug #6): rename-feature now updates the title field.** Previously only patched `name` (slug), leaving the portal showing the old human-readable title. Now derives a title from the new slug (strip numeric prefix, title-case) and sends both `name` and `title` in the PATCH. Pass `--title "Custom Title"` to override the derivation.
 - **Fix (bug #8): attach replaces existing attachment with the same filename.** Previously re-uploading the same file created a duplicate row. Now checks existing attachments for the feature, and if one with the same filename exists, deletes it before uploading the replacement. Best-effort — if the check fails, upload still proceeds (may still duplicate).
 
-## 0.15.2 — 2026-04-15
+## 0.15.2 — 2026-04-15 00:11 — Björn Allvin
 
 - New subcommand `set-bug-status <project-id> <bug-number> <status>` — change a bug's status from the CLI. Previously the only way to close a resolved bug was via the portal UI or a manual PATCH to the API.
 - New slash command `/awolve-spec:set-bug-status`.
 - SKILL.md reference table updated.
 
-## 0.15.1 — 2026-04-15
+## 0.15.1 — 2026-04-15 00:06 — Björn Allvin
 
 - New subcommand `view-bug <project-id> <bug-number> [--json]` — fetch full bug details (description, severity, repro). Previously there was no way to read a bug's body without opening the portal or curling the API.
 - New slash command `/awolve-spec:view-bug` — Claude-facing wrapper.
 - SKILL.md now includes a full `specs-cli.py` subcommand reference so Claude doesn't have to grep the script source to discover the command surface. Also documents two sharp edges: `create-feature` rejects numeric prefixes (service auto-numbers), and `--json` is available on several list commands.
 
-## 0.15.0 — 2026-04-13
+## 0.15.0 — 2026-04-13 12:26 — Björn Allvin
 
 **Feature shortDescription from the CLI.** Companion to spec-service v0.21.1 which fixed the PATCH route.
 
@@ -398,15 +404,15 @@ Requires spec-service v0.25.0 (adds `is_epic` column + parent validation).
 - New slash command `/awolve-spec:set-description` — Claude-facing wrapper.
 - Requires spec-service v0.21.1 or later (earlier versions silently drop `short_description` on the lookup PATCH).
 
-## 0.14.3 — 2026-04-13
+## 0.14.3 — 2026-04-13 09:18 — Björn Allvin
 - `create-feature` now sends the spec number explicitly to the service as `number` in the POST body, derived from the folder name prefix. The service also accepts the prefix implicitly, but sending it explicitly keeps CLI and service consistent when the name already has a number.
 - Requires spec-service v0.20.0 or later (earlier versions ignore the `number` field).
 
-## 0.14.2 — 2026-04-12
+## 0.14.2 — 2026-04-12 23:00 — Björn Allvin
 
 - **New slash command `/awolve-spec:update-plugins`** — refreshes the `awolve-open-claude-plugins` marketplace and prompts the user to run `/reload-plugins`. Counterpart to `/update-awolve-plugins` (which covers `awolve-marketplace`). `/cortex-update` runs both.
 
-## 0.14.1 — 2026-04-12
+## 0.14.1 — 2026-04-12 21:45 — Björn Allvin
 
 - **`specs log --all`** — query the audit feed across every configured project, merged and sorted by time. Events get a project-id prefix so the output stays legible. Makes "what happened yesterday" answerable without picking a project.
   ```bash
@@ -417,7 +423,7 @@ Requires spec-service v0.25.0 (adds `is_epic` column + parent validation).
   Works alongside the per-project form — pass either a project id or `--all`, not both.
 - **New slash command `/awolve-spec:log`** — Claude-facing interface to the CLI that maps natural-language questions ("what happened yesterday", "did Michael do anything today", "any new bugs this week") to the right flags, runs the command, and summarizes the output with grouped bullet points per project. Advances the visit cursor when appropriate.
 
-## 0.14.0 — 2026-04-12
+## 0.14.0 — 2026-04-12 02:02 — Björn Allvin
 
 **Robust pull + `specs log` command** (spec 010 phases 3b + 4, plugin side). Companion to spec-service v0.18.0 which shipped the `/changes` and `/history` endpoints.
 
@@ -480,39 +486,39 @@ Output is colored by entity type (feature / doc / version / comment / review / b
 ### Requires
 
 - spec-service v0.18.0 or later. Older versions return the manifest without a `cursor` field, which the plugin tolerates but deletion detection + delta sync fall back to "full manifest every time".
-## 0.13.0 — 2026-04-10
+## 0.13.0 — 2026-04-10 15:55 — Björn Allvin
 - **Binary attachments**. Completes the filesystem-sync half of the spec-service file upload feature (service side shipped in spec-service 0.13.0).
   - `pull` now also downloads feature attachments to the local feature folder alongside .md docs. Deduped by `(filename, size)` — re-downloads on size mismatch, skips otherwise.
   - New `attach` command and `/awolve-spec:attach` slash command for uploading a local binary file (image, PDF, Excel, etc.) to a feature. Feature is inferred from the file path if not specified explicitly.
   - Multipart upload built inline (no third-party deps) so the CLI stays stdlib-only.
 - Requires spec-service v0.13.0 or later (earlier versions will reject the attachment API calls).
 
-## 0.10.9 — 2026-04-02
+## 0.10.9 — 2026-04-02 22:54 — Björn Allvin
 - UX: API key login reads from clipboard (`--from-clipboard`) — copy key, run command, done
 - Validates key starts with `sk_` before calling service
 - Clears clipboard after successful login
 
-## 0.10.8 — 2026-04-02
+## 0.10.8 — 2026-04-02 22:37 — Björn Allvin
 - Fix: API key login supports `SPECS_API_KEY` env var — works in Claude Code `!` commands where getpass fails
 - Falls back gracefully with instructions if interactive input unavailable
 
-## 0.10.7 — 2026-04-02
+## 0.10.7 — 2026-04-02 22:34 — Björn Allvin
 - Fix: `/specs-login` removes Bash from allowed-tools so it must ask auth method first
 
-## 0.10.6 — 2026-04-02
+## 0.10.6 — 2026-04-02 22:30 — Björn Allvin
 - Fix: `/specs-login` now forces auth method question — cannot be skipped or assumed
 - Docs: added update command to README and SKILL.md
 - Docs: updated README with full command list and current setup flow
 
-## 0.10.5 — 2026-04-02
+## 0.10.5 — 2026-04-02 22:16 — Björn Allvin
 - UX: `/specs-login` now asks user to choose auth method (Azure CLI or API key) before proceeding
 
-## 0.10.4 — 2026-04-02
+## 0.10.4 — 2026-04-02 22:11 — Björn Allvin
 - Security: API key login now uses `getpass` (hidden prompt) — key never appears in args or conversation
 - Login verifies key against service before saving
 - Command instructs user to run via `!` prefix so key stays in their terminal
 
-## 0.10.3 — 2026-04-02
+## 0.10.3 — 2026-04-02 19:08 — Björn Allvin
 - Fix: create-feature now sends required `title` and `contextPath` to API (was failing with 400)
 - Fix: create-doc now sends required `content` to API (was failing with 400)
 - Fix: list-features reads `documentCount` instead of missing `documents` array
@@ -521,20 +527,20 @@ Output is colored by entity type (feature / doc / version / comment / review / b
 - Fix: render_frontmatter normalizes body join to prevent double-newline compounding
 - Refactor: create_backlog_item passes dict instead of pre-serialized JSON string
 
-## 0.10.2 — 2026-04-01
+## 0.10.2 — 2026-04-01 21:57 — Björn Allvin
 - Fix: specs-pull updates local frontmatter (spec_version, feature_status, doc_status) when content matches but metadata has drifted — prevents stale base_version causing false 409 conflicts on push
 
-## 0.10.1 — 2026-03-31
+## 0.10.1 — 2026-03-31 12:02 — Björn Allvin
 - Align marketplace and plugin versions
 
-## 0.10.0 — 2026-03-31
+## 0.10.0 — 2026-03-31 11:47 — Björn Allvin
 - Feature and document management commands (create, rename, delete features and documents)
 
-## 0.9.1 — 2026-03-31
+## 0.9.1 — 2026-03-31 13:56 — Björn Allvin
 - Fix: remove explicit hooks reference — auto-discovered by convention
 
-## 0.9.0 — 2026-03-31
+## 0.9.0 — 2026-03-31 13:52 — Björn Allvin
 - Phased spec commands: `/spec requirements`, `/spec design`, `/spec infra`, `/spec plan`
 
-## 0.8.1 — 2026-03-29
+## 0.8.1 — 2026-03-29 13:23 — Björn Allvin
 - Fix: register hooks in plugin manifest
