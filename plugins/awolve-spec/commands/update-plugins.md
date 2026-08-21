@@ -30,6 +30,8 @@ Note that `claude plugin install` does **not** upgrade an already-installed plug
 
 If the plugin was upgraded, tell the user to run `/reload-plugins` in their current session to pick up the new commands and skills. Phrase it as a direct instruction — slash commands have to be invoked by the user, not by Claude.
 
-Also tell them to **restart Claude Code**. This plugin registers a `SessionStart` hook that runs `specs-cli.py pull`, and hooks in already-running sessions keep resolving to the old plugin root until those sessions restart. A stale hook here is not cosmetic: versions before 0.19.0 wrote conflict `.remote` sidecars beside your spec files instead of staging them out-of-tree, so every session start re-littered the synced specs tree even after the update appeared to succeed.
+Mention **restarting Claude Code** only when the release touched spec sync. The plugin root is version-pinned (`…/awolve-spec/<version>`), so a running session's `SessionStart` and `PostToolUse` hooks keep executing the previous version's `specs-cli.py` until that session restarts — but those hooks only run `pull` and `post-tool-use`, so a release that changed, say, a backlog command is unaffected and a restart buys nothing.
+
+When sync *did* change, say so and say why. A stale hook there is not cosmetic: versions before 0.19.0 wrote conflict `.remote` sidecars beside spec files instead of staging them out-of-tree, so every session start re-littered the synced specs tree even after the update appeared to succeed. `hooks.json` itself has changed once in 78 releases; the sync code behind it changes perhaps one release in six.
 
 If the plugin reported "already at the latest version", say so plainly and skip the reload suggestion.

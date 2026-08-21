@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.1 — 2026-08-21 09:18 — Björn Allvin
+
+- **`/awolve-spec:update-plugins` no longer tells everyone to restart Claude Code.** It said so on every update. The mechanism is real — the plugin root is version-pinned (`…/awolve-spec/<version>`), so a running session's hooks keep executing the previous version's `specs-cli.py` — but those hooks only run `pull` and `post-tool-use`. A release that changed a backlog command is unaffected, and a restart buys nothing. `hooks.json` has changed once in 78 releases; the sync code behind it, roughly one release in six. The instruction is now conditional, and says why when it applies.
+
 ## 0.41.0 — 2026-08-21 09:04 — Björn Allvin
 
 - **`specs-cli.py --version`.** The portal's changelog page names the latest published CLI version; until now there was no way to find out whether the copy you are running is that one. `--version`, `-V` and `version` all print it, read from the plugin manifest beside the script.
