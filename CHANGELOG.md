@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.43.0 — 2026-09-01 14:35 — Björn Allvin
+
+- **Deployment info on bugs and backlog items (spec-service spec 033).** `update-bug` and `backlog-update` gain `--deployed-stage preview|staging|production` and `--deployed-url` — set together, with the deploy time stamped automatically — plus `--clear-deployment` to remove the fact. `view-bug` and `view-backlog` show a `deployed:` line, and the `bugs`/`backlog` lists show a `[stage]` marker on rows that have one. Projects with no deployment data see unchanged output. The stage is a fact about where the fix runs, not a status — automation and humans stop fighting over the same field.
+
 ## 0.42.0 — 2026-08-21 09:31 — Björn Allvin
 
 - **`/awolve-spec:backlog-depend` and `/awolve-spec:backlog-undepend` actually exist now.** 0.40.0 added the CLI dispatch and the `--help` lines but no command files, so the two commands were listed in help and unreachable as slash commands — precisely the both-directions invariant 0.38.0 established and verified. Re-verified in both directions: every command file appears in `help.md`, every listed command has a file, and every file has a CLI dispatch.

@@ -1,5 +1,5 @@
 ---
-description: Update a backlog item's title, description, priority, status, assignee, or epic flag
+description: Update a backlog item's title, description, priority, status, assignee, epic flag, or deployment info (stage + URL)
 ---
 
 # /awolve-spec:backlog-update
@@ -21,10 +21,12 @@ At least one field flag is required: `--title`, `--description`, `--priority` (l
 
 **Timing (spec 023, internal users only):** `--start YYYY-MM-DD`, `--due YYYY-MM-DD`, `--estimate HOURS` (0–9999.99, at most two decimals), and their valueless twins `--clear-start`, `--clear-due`, `--clear-estimate`. A start date after a due date is rejected — checked against the item's resulting state, so moving *either* date across the other fails. External users get `timing_forbidden`.
 
+**Deployment info (spec 033):** `--deployed-stage preview|staging|production` and `--deployed-url <url>` record where the implementation currently runs — set together (a stage flip that kept the old URL would point at a torn-down preview host); the CLI stamps the deploy time automatically. `--clear-deployment` removes the fact. The stage is not a status: it says where the code runs, not who acts next.
+
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]
 ```
 
 Examples:

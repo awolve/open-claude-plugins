@@ -58,8 +58,10 @@ Usage:
                                        — Reparent a backlog item (or pass 'none' to clear the parent)
     specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
+                                       [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
                                        — Update fields on an existing backlog item.
-                                         --tags replaces the set; --add-tag/--remove-tag are repeatable deltas
+                                         --tags replaces the set; --add-tag/--remove-tag are repeatable deltas.
+                                         --deployed-stage/--deployed-url record where the fix runs (set together)
     specs-cli.py --version
                                        — Print the installed plugin version (compare it with the
                                          one the portal changelog names as latest)
@@ -90,7 +92,8 @@ Usage:
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
-                                       — Edit a bug's title, description, severity, assignee, or tags
+                                       [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
+                                       — Edit a bug's title, description, severity, assignee, tags, or deployment info
     specs-cli.py bug-comments <project-id> <bug-number> [--json]
                                        — List comments on a bug
     specs-cli.py bug-comment <project-id> <bug-number> <body>
@@ -2099,6 +2102,56 @@ CLEAR_TIMING_FLAGS = {
     "--clear-estimate": "estimateHours",
 }
 
+# Spec 033 — deployment tracking. The stage is a machine-maintained fact about
+# where a fix currently runs; it is deliberately not a status, so automation
+# never fights the item's owner over workflow state.
+DEPLOY_STAGES = ["preview", "staging", "production"]
+
+DEPLOY_FLAGS = {
+    "--deployed-stage": "deployedStage",
+    "--deployed-url": "deployedUrl",
+}
+
+
+def _deployed_line(item):
+    """Textual version of the portal's stage chip + URL button, or None.
+
+    Rendering nothing when the stage is null keeps output unchanged for
+    projects that don't use deployment tracking (spec 033's invisibility rule).
+    """
+    stage = item.get("deployedStage")
+    if not stage:
+        return None
+    parts = [f"[{stage}]"]
+    if item.get("deployedUrl"):
+        parts.append(item["deployedUrl"])
+    if item.get("deployedAt"):
+        parts.append(f"({item['deployedAt']})")
+    return " ".join(parts)
+
+
+def validate_deployment_fields(fields):
+    """Guard the spec-033 deploy fields before the PATCH round-trip.
+
+    Stage and URL are always written together — a stage flip that kept the old
+    URL would point at a torn-down preview host — and every write stamps
+    deployedAt so the chip can say how fresh it is. A --clear-deployment parse
+    puts explicit nulls in all three, which passes through untouched.
+    """
+    if "deployedStage" not in fields and "deployedUrl" not in fields:
+        return
+    stage = fields.get("deployedStage")
+    url = fields.get("deployedUrl")
+    if stage is None and url is None:
+        return
+    if not stage or not url:
+        print("specs: --deployed-stage and --deployed-url must be set together (or use --clear-deployment)", file=sys.stderr)
+        sys.exit(1)
+    if stage not in DEPLOY_STAGES:
+        print(f"specs: invalid deployment stage '{stage}'. Valid: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
+        sys.exit(1)
+    fields["deployedAt"] = datetime.now(timezone.utc).isoformat()
+
 # Statuses meaning "finished" — finished work is never late.
 TIMING_TERMINAL = {
     "backlog": ("completed", "archived"),
@@ -2708,8 +2761,10 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             sev_marker = {"critical": "!!!", "high": "!!", "medium": "!", "low": "."}.get(severity, "?")
             assignee = _assignee_label(bug)
             assigned = f"  · @{assignee}" if assignee else ""
+            dep_stage = bug.get("deployedStage")
+            dep = f" [{dep_stage}]" if dep_stage else ""
             print(f"  #{number:<4} [{sev_marker}] {title}{_tag_suffix(bug)}")
-            print(f"        {status} — reported by {reporter}{assigned}")
+            print(f"        {status}{dep} — reported by {reporter}{assigned}")
 
 
 # Markdown image carrying an inline base64 data URI:
@@ -2952,6 +3007,9 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
         print(f"  updated:   {updated}")
     if environment:
         print(f"  env:       {environment}")
+    deployed = _deployed_line(detail)
+    if deployed:
+        print(f"  deployed:  {deployed}")
     print(f"  comments:  {comment_count}")
     print(f"  portal:    {service_url}/portal/{project_id}/bugs/{match.get('id', '')}")
     print()
@@ -3471,8 +3529,10 @@ def _print_backlog_row(item, indent=0):
         timing += " (OVERDUE)"
     elif state == "late_to_start":
         timing += " (late to start)"
+    dep_stage = item.get("deployedStage")
+    dep = f" [{dep_stage}]" if dep_stage else ""
     print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{_tag_suffix(item)}{histogram}")
-    print(f"       {pad}{status}{promoted}{assigned}{timing}")
+    print(f"       {pad}{status}{dep}{promoted}{assigned}{timing}")
 
 
 def _plugin_version():
@@ -3644,6 +3704,9 @@ def view_backlog(project_id, ref, as_json=False):
         parts = [f"{cstat[s]} {s}" for s in order if cstat[s]]
         if parts:
             print(f"  children:  {' · '.join(parts)}")
+    deployed = _deployed_line(item)
+    if deployed:
+        print(f"  deployed:  {deployed}")
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
@@ -6379,7 +6442,7 @@ def main():
         # `backlog-update` so the two flows feel consistent.
         positional = []
         flag_map = {"--title": "title", "--description": "description", "--severity": "severity", "--assignee": "assignedTo",
-                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
+                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", **DEPLOY_FLAGS}
         fields = {}
         tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
         skip_next = False
@@ -6395,6 +6458,13 @@ def main():
             # Spec 023: same trick per timing field.
             if a in CLEAR_TIMING_FLAGS:
                 fields[CLEAR_TIMING_FLAGS[a]] = None
+                continue
+            # Spec 033: clear the whole deployment fact — the three fields
+            # only mean anything together.
+            if a == "--clear-deployment":
+                fields["deployedStage"] = None
+                fields["deployedUrl"] = None
+                fields["deployedAt"] = None
                 continue
             # Spec 027: tag flags. --tags replaces the set; --add-tag and
             # --remove-tag are repeatable deltas folded against the bug's
@@ -6426,16 +6496,21 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]", file=sys.stderr)
+            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]", file=sys.stderr)
             print(f"  Severities: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
+            print(f"  Deployment stages: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
+            sys.exit(1)
+        if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
+            print("specs: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
             print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
             sys.exit(1)
         validate_timing_fields(fields)
+        validate_deployment_fields(fields)
         has_tag_edit = tag_edit["clear"] or tag_edit["replace"] is not None or tag_edit["add"] or tag_edit["remove"]
         update_bug(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None)
     elif cmd == "bug-comments":
@@ -6639,7 +6714,7 @@ def main():
         # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
         positional = []
         flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo",
-                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours"}
+                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", **DEPLOY_FLAGS}
         fields = {}
         tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
         skip_next = False
@@ -6655,6 +6730,13 @@ def main():
             # Spec 023: the same valueless-twin trick for each timing field.
             if a in CLEAR_TIMING_FLAGS:
                 fields[CLEAR_TIMING_FLAGS[a]] = None
+                continue
+            # Spec 033: clear the whole deployment fact — the three fields
+            # only mean anything together.
+            if a == "--clear-deployment":
+                fields["deployedStage"] = None
+                fields["deployedUrl"] = None
+                fields["deployedAt"] = None
                 continue
             # Spec 027: tag flags. --tags replaces the set; --add-tag and
             # --remove-tag are repeatable deltas folded against the item's
@@ -6686,10 +6768,13 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
+            sys.exit(1)
+        if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
+            print("specs: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         # Coerce --epic value to a real bool — backend rejects strings here.
         if "isEpic" in fields:
@@ -6707,6 +6792,7 @@ def main():
             print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
             sys.exit(1)
         validate_timing_fields(fields)
+        validate_deployment_fields(fields)
         has_tag_edit = tag_edit["clear"] or tag_edit["replace"] is not None or tag_edit["add"] or tag_edit["remove"]
         update_backlog_item(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None)
     elif cmd == "backlog-delete":

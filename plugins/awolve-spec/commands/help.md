@@ -50,7 +50,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:backlog` | List backlog items for a project (filterable by assignee and tag) |
 | `/awolve-spec:backlog-add` | Add a new idea or feature request to the backlog |
 | `/awolve-spec:view-backlog` | Show full details of a single backlog item |
-| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, or epic flag |
+| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, epic flag, or deployment info |
 | `/awolve-spec:backlog-set-parent` | Set or clear the parent (epic) of a backlog item |
 | `/awolve-spec:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-spec:backlog-undepend` | Remove a dependency (restores the previous status) |
@@ -63,7 +63,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:bugs` | List open bugs (filterable by assignee and tag) |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
-| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, or tags |
+| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, tags, or deployment info |
 | `/awolve-spec:set-bug-status` | Change a bug's status |
 | `/awolve-spec:delete-bug` | Soft-delete a bug (internal users only) |
 | `/awolve-spec:bug-comments` | List comments on a bug |

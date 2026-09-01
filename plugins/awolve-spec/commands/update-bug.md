@@ -1,5 +1,5 @@
 ---
-description: Update a bug's title, description, severity, assignee, tags, or timing (start/due/estimate)
+description: Update a bug's title, description, severity, assignee, tags, timing (start/due/estimate), or deployment info (stage + URL)
 ---
 
 # /awolve-spec:update-bug
@@ -21,10 +21,12 @@ At least one field flag is required: `--title`, `--description`, `--severity` (l
 
 **Timing (spec 023, internal users only):** `--start YYYY-MM-DD`, `--due YYYY-MM-DD`, `--estimate HOURS` (0–9999.99, at most two decimals), plus the valueless `--clear-start`, `--clear-due`, `--clear-estimate`. Start must not fall after due — checked against the bug's resulting state, so moving either date across the other is rejected. External users get `timing_forbidden`.
 
+**Deployment info (spec 033):** `--deployed-stage preview|staging|production` and `--deployed-url <url>` record where the fix currently runs — they must be set together (a stage flip that kept the old URL would point at a torn-down preview host), and the CLI stamps the deploy time automatically. `--clear-deployment` removes the fact entirely. The stage is deliberately not a status: it says where the code runs, not who acts next. Setting it needs write rights on the project; external reporters cannot.
+
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]
 ```
 
 Examples:
@@ -46,6 +48,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --
 # Label it during triage
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --add-tag regression
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --tags regression,billing
+
+# Record that the fix is live on a preview slot (e.g. after pushing a fix branch)
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --deployed-stage preview --deployed-url https://preview.example.com/p1
 ```
 
 ## Notes
