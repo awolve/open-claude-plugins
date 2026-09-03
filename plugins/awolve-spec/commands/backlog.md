@@ -24,7 +24,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 
 ### Filters
 
-- **`--status STATUS`** — only show items with this status (`idea`, `planned`, `in_progress`, `ready_for_testing`, `completed`, `archived`).
+- **`--status STATUS`** — only show items with this status (`idea`, `planned`, `in_progress`, `ready_for_testing`, `completed`, `archived`). Naming `completed` or `archived` shows them even though the default list hides both.
+- **`--all`** — every item regardless of status, including `completed` and `archived`.
 - **`--overdue`** — only items past their due date and not finished (spec 023).
 - **`--late-to-start`** — only items past their start date that nobody has picked up yet (still `idea` or `planned`). An item that is both is found by either flag, though the list labels it `(OVERDUE)`.
 - **`--priority PRIORITY`** — only show items with this priority (`low`, `medium`, `high`).

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.44.0 — 2026-09-03 11:27 — Björn Allvin
+
+- **`bugs` shows any status you name; `backlog --status completed` works.** `bugs` gains `--status STATUS` and `--all`; its default stays open bugs only, but `resolved` and `closed` are one flag away instead of unreachable. `backlog --status completed|archived` returned nothing before, because the default exclusion of those two statuses ran before the filter — fixed, and `backlog --all` lifts the exclusion without naming a status. Found when a "which previews are approved to merge?" check missed two bugs a tester had resolved on their preview URLs. The CLI never hides something you asked for by name.
+
 ## 0.43.0 — 2026-09-01 14:35 — Björn Allvin
 
 - **Deployment info on bugs and backlog items (spec-service spec 033).** `update-bug` and `backlog-update` gain `--deployed-stage preview|staging|production` and `--deployed-url` — set together, with the deploy time stamped automatically — plus `--clear-deployment` to remove the fact. `view-bug` and `view-backlog` show a `deployed:` line, and the `bugs`/`backlog` lists show a `[stage]` marker on rows that have one. Projects with no deployment data see unchanged output. The stage is a fact about where the fix runs, not a status — automation and humans stop fighting over the same field.

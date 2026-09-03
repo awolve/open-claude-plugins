@@ -2693,8 +2693,15 @@ def _print_tag_error(status_code, body):
     return True
 
 
-def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False):
+def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False,
+              status_filter=None, include_all=False):
     """List bugs for a project or all configured projects.
+
+    Default is open bugs only (everything but `resolved`/`closed`). `status_filter`
+    shows exactly that status — including `resolved` and `closed`, which is how a
+    "what did the tester sign off?" question gets answered — and `include_all`
+    shows every bug regardless of status. The CLI never hides something you
+    asked for by name.
 
     `assignee_filter` (spec 022) is an email or name fragment, or the literal
     'none'/'unassigned' for bugs nobody owns.
@@ -2736,19 +2743,26 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             continue
 
         bugs = json.loads(body)
-        open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
+        if include_all:
+            open_bugs = list(bugs)
+        elif status_filter:
+            open_bugs = [b for b in bugs if b.get("status") == status_filter]
+        else:
+            open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
+        scope = "" if include_all else (status_filter or "open")
         if assignee_filter:
             open_bugs = _filter_by_assignee(open_bugs, assignee_filter)
         if tag_filters or untagged:
             open_bugs = [b for b in open_bugs if _matches_tag_filter(b, tag_filters or [], untagged)]
 
+        label = f"{scope} " if scope else ""
         if len(projects) > 1:
-            print(f"\n{proj['id']} ({len(open_bugs)} open)")
+            print(f"\n{proj['id']} ({len(open_bugs)} {label.strip() or 'total'})")
         else:
-            print(f"specs: {len(open_bugs)} open bug(s) in '{proj['id']}'")
+            print(f"specs: {len(open_bugs)} {label}bug(s) in '{proj['id']}'")
 
         if not open_bugs:
-            print("  (no open bugs)")
+            print(f"  (no {label}bugs)")
             continue
 
         print()
@@ -3355,7 +3369,7 @@ def delete_bug_comment(project_id, bug_number, comment_id):
 
 
 def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
-                 overdue=False, late_to_start=False, tag_filters=None, untagged=False):
+                 overdue=False, late_to_start=False, tag_filters=None, untagged=False, include_all=False):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
@@ -3411,9 +3425,15 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             continue
 
         items = json.loads(body)
-        active = [i for i in items if i.get("status") not in ("completed", "archived")]
-        if status_filter:
-            active = [i for i in active if i.get("status") == status_filter]
+        # `--status completed` used to return nothing: the default exclusion of
+        # completed/archived ran BEFORE the status filter. A status you name is
+        # what you get; `--all` lifts the exclusion without naming one.
+        if include_all:
+            active = list(items)
+        elif status_filter:
+            active = [i for i in items if i.get("status") == status_filter]
+        else:
+            active = [i for i in items if i.get("status") not in ("completed", "archived")]
         if priority_filter:
             active = [i for i in active if i.get("priority") == priority_filter]
         if assignee_filter:
@@ -3426,7 +3446,8 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(active)} active)")
         else:
-            print(f"specs: {len(active)} active backlog item(s) in '{proj['id']}'")
+            scope = "" if include_all else (status_filter or "active")
+            print(f"specs: {len(active)} {scope + ' ' if scope else ''}backlog item(s) in '{proj['id']}'")
 
         if not active:
             print("  (no active items)")
@@ -6394,6 +6415,13 @@ def main():
         set_status(args[1], args[2])
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
+        VALUE_FLAGS_BUGS = {"--assignee", "--tag", "--status"}
+        if proj is None:
+            for i, a in enumerate(args[1:], 1):
+                if a.startswith("-"): continue
+                if args[i - 1] in VALUE_FLAGS_BUGS: continue
+                proj = a
+                break
         assignee_filter = None
         tag_filters = []
         for i, a in enumerate(args):
@@ -6401,8 +6429,12 @@ def main():
             # Spec 027: repeatable, OR-ed — `--tag billing --tag auth`.
             if a == "--tag" and i + 1 < len(args): tag_filters.append(args[i + 1])
         if "--unassigned" in args: assignee_filter = "none"
+        status_filter = None
+        for i, a in enumerate(args):
+            if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
         list_bugs(proj, assignee_filter=assignee_filter, tag_filters=tag_filters,
-                  untagged="--untagged" in args)
+                  untagged="--untagged" in args, status_filter=status_filter,
+                  include_all="--all" in args)
     elif cmd == "view-bug":
         as_json = "--json" in args
         save_images = "--images" in args
@@ -6674,7 +6706,7 @@ def main():
         late_filter = "--late-to-start" in args
         list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter,
                      assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter,
-                     tag_filters=tag_filters, untagged="--untagged" in args)
+                     tag_filters=tag_filters, untagged="--untagged" in args, include_all="--all" in args)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False
