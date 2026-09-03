@@ -16,12 +16,13 @@ First determine which project to show bugs for. If the user specifies one, use i
 Then run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bugs <project-id> [--status STATUS | --all] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bugs <project-id> [--status STATUS | --all] [--json] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
 ```
 
 Filters:
 - **`--status STATUS`** — only bugs in exactly that status (`open`, `triaged`, `in_progress`, `ready_for_retest`, `resolved`, `closed`). Without it the list is open bugs only, which excludes `resolved` and `closed`; ask for those by name — "what did the tester sign off on a preview?" is `--status resolved`.
 - **`--all`** — every bug regardless of status.
+- **`--json`** — print the filtered rows as JSON (the service's own fields: `number`, `status`, `severity`, `title`, `assignedToName`, `deployedStage`, `deployedUrl`, …) instead of the text list. For tooling; never scrape the text layout.
 - **`--assignee EMAIL`** — only bugs assigned to that person (matches email, or a fragment of their name).
 - **`--unassigned`** — only bugs nobody has picked up. Useful as a triage sweep.
 - **`--tag TAG`** — only bugs carrying that tag. Repeatable and OR-ed; matches on slug or display name.

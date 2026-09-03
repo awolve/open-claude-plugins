@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.45.0 — 2026-09-03 12:05 — Björn Allvin
+
+- **`bugs --json` and `backlog --json`.** The filtered rows as JSON, the service's own fields, instead of the text list or tree. Tooling that matched preview slots to items was scraping the text layout with `grep -B1` and broke on nothing more than a shell that does not word-split; now it asks for JSON and reads `number`, `status`, `deployedStage`, `deployedUrl` directly. Combine with `--all` or `--status` as before.
+
 ## 0.44.0 — 2026-09-03 11:27 — Björn Allvin
 
 - **`bugs` shows any status you name; `backlog --status completed` works.** `bugs` gains `--status STATUS` and `--all`; its default stays open bugs only, but `resolved` and `closed` are one flag away instead of unreachable. `backlog --status completed|archived` returned nothing before, because the default exclusion of those two statuses ran before the filter — fixed, and `backlog --all` lifts the exclusion without naming a status. Found when a "which previews are approved to merge?" check missed two bugs a tester had resolved on their preview URLs. The CLI never hides something you asked for by name.

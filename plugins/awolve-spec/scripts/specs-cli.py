@@ -2694,7 +2694,7 @@ def _print_tag_error(status_code, body):
 
 
 def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False,
-              status_filter=None, include_all=False):
+              status_filter=None, include_all=False, as_json=False):
     """List bugs for a project or all configured projects.
 
     Default is open bugs only (everything but `resolved`/`closed`). `status_filter`
@@ -2730,6 +2730,7 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             print(f"specs: project '{project_id}' not in config", file=sys.stderr)
             sys.exit(1)
 
+    json_out = {}
     for proj in projects:
         url = f"{service_url}/api/portal/projects/{proj['id']}/bugs"
         try:
@@ -2754,6 +2755,12 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             open_bugs = _filter_by_assignee(open_bugs, assignee_filter)
         if tag_filters or untagged:
             open_bugs = [b for b in open_bugs if _matches_tag_filter(b, tag_filters or [], untagged)]
+        if as_json:
+            # Machine-readable: the filtered rows, verbatim from the service,
+            # so tooling never has to scrape the text layout. One array per
+            # project; a multi-project run prints one object keyed by id.
+            json_out.setdefault(proj["id"], open_bugs)
+            continue
 
         label = f"{scope} " if scope else ""
         if len(projects) > 1:
@@ -2783,6 +2790,10 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
 
 # Markdown image carrying an inline base64 data URI:
 # ![alt](data:image/png;base64,AAAA...)
+    if as_json:
+        print(json.dumps(json_out[project_id] if project_id and project_id in json_out else json_out,
+                         indent=2, ensure_ascii=False))
+
 _INLINE_IMG_RE = re.compile(
     r"!\[([^\]]*)\]\(data:image/([A-Za-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+?)\)"
 )
@@ -3369,7 +3380,8 @@ def delete_bug_comment(project_id, bug_number, comment_id):
 
 
 def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
-                 overdue=False, late_to_start=False, tag_filters=None, untagged=False, include_all=False):
+                 overdue=False, late_to_start=False, tag_filters=None, untagged=False, include_all=False,
+                 as_json=False):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
@@ -3412,6 +3424,7 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
     if (tag_filters or untagged) and view == "tree":
         view = "flat"
 
+    json_out = {}
     for proj in projects:
         url = f"{service_url}/api/portal/projects/{proj['id']}/backlog"
         try:
@@ -3442,6 +3455,9 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             active = [i for i in active if matches_timing_filter("backlog", i, overdue, late_to_start)]
         if tag_filters or untagged:
             active = [i for i in active if _matches_tag_filter(i, tag_filters or [], untagged)]
+        if as_json:
+            json_out.setdefault(proj["id"], active)
+            continue
 
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(active)} active)")
@@ -3476,7 +3492,9 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
                 kids = children_by_parent.get(item.get("id"), [])
                 for k in kids:
                     _print_backlog_row(k, indent=2)
-
+    if as_json:
+        print(json.dumps(json_out[project_id] if project_id and project_id in json_out else json_out,
+                         indent=2, ensure_ascii=False))
 
 def _assignee_label(item):
     """Human label for an item's assignee, or None when unassigned (spec 022)."""
@@ -6434,7 +6452,7 @@ def main():
             if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
         list_bugs(proj, assignee_filter=assignee_filter, tag_filters=tag_filters,
                   untagged="--untagged" in args, status_filter=status_filter,
-                  include_all="--all" in args)
+                  include_all="--all" in args, as_json="--json" in args)
     elif cmd == "view-bug":
         as_json = "--json" in args
         save_images = "--images" in args
@@ -6706,7 +6724,8 @@ def main():
         late_filter = "--late-to-start" in args
         list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter,
                      assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter,
-                     tag_filters=tag_filters, untagged="--untagged" in args, include_all="--all" in args)
+                     tag_filters=tag_filters, untagged="--untagged" in args, include_all="--all" in args,
+                     as_json="--json" in args)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False
