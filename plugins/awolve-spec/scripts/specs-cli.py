@@ -4731,6 +4731,61 @@ def rename_feature(project_id, old_name, new_name, title_override=None):
     print(f"  path: {new_dir}")
 
 
+def _doc_id_siblings(abs_path, doc_id):
+    """Other files in the same folder carrying the same spec_doc_id.
+
+    OneDrive conflict copies (`design-<Machine>.md`) are byte-for-byte clones
+    of the original, frontmatter included, so two files can claim one document
+    id. Any command that resolves its target by id — delete, rename — must
+    refuse in that case, or it acts on the original while the caller is
+    looking at the copy.
+    """
+    folder = os.path.dirname(abs_path)
+    twins = []
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return twins
+    for fname in sorted(names):
+        if not fname.endswith(".md"):
+            continue
+        fpath = os.path.join(folder, fname)
+        if fpath == abs_path or not os.path.isfile(fpath):
+            continue
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                head = f.read(4096)
+        except (IOError, OSError):
+            continue
+        meta, _ = parse_frontmatter(head)
+        if meta.get("spec_doc_id") == doc_id:
+            twins.append(fpath)
+    return twins
+
+
+def _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, verb):
+    """Exit 1 when more than one local file claims `doc_id`."""
+    twins = _doc_id_siblings(abs_path, doc_id)
+    if not twins:
+        return
+    print(
+        f"specs: refusing to {verb} — {len(twins) + 1} files in this folder carry "
+        f"spec_doc_id {doc_id}:",
+        file=sys.stderr,
+    )
+    print(f"  {abs_path}  (given)", file=sys.stderr)
+    for t in twins:
+        print(f"  {t}", file=sys.stderr)
+    print(
+        "  These are sync conflict copies of one document. Acting on the id would "
+        "hit the original, not the copy.\n"
+        "  Remove the stray file itself instead (rm <path>), keeping the one whose "
+        "filename matches the service, then retry.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
 def rename_document(file_path, new_filename):
     """Rename a document file and update the service."""
     cfg = config.read_config()
@@ -4761,6 +4816,8 @@ def rename_document(file_path, new_filename):
     if not doc_id:
         print(f"specs: {file_path} has no spec_doc_id — not tracked by service", file=sys.stderr)
         sys.exit(1)
+
+    _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, "rename")
 
     try:
         status_code, resp_body = api_request(
@@ -4816,6 +4873,8 @@ def delete_document(file_path):
         os.remove(abs_path)
         print(f"specs: deleted local file: {file_path}")
         return
+
+    _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, "delete")
 
     try:
         status_code, body = api_request(

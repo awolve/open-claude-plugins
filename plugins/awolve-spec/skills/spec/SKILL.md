@@ -113,8 +113,8 @@ Full subcommand surface:
 | `create-feature <project-id> <name> [--status] [--description]` | Create feature (service auto-assigns the number — do NOT include a numeric prefix in `<name>`) |
 | `create-doc <project-id> <feature-name> <filename>` | Add a document to a feature |
 | `rename-feature <project-id> <old> <new>` | Rename feature folder + service |
-| `rename-doc <file-path> <new-filename>` | Rename a document |
-| `delete-doc <file-path>` | Delete a document |
+| `rename-doc <file-path> <new-filename>` | Rename a document. Refuses (exit 1) when another file in the folder carries the same `spec_doc_id` — a sync conflict copy; `rm` the stray file instead. |
+| `delete-doc <file-path>` | Delete a document. Same duplicate-id refusal as `rename-doc`: acting on the id would delete the original, not the copy. |
 | `delete-feature <project-id> <feature-name>` | Delete a feature and its docs |
 | `list-features <project-id>` | List all features in a project |
 | `list-docs <project-id> <feature-name>` | List all docs in a feature |

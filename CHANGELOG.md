@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.0 — 2026-09-04 10:20 — Björn Allvin
+
+- **`delete-doc` and `rename-doc` refuse a duplicated `spec_doc_id`.** A OneDrive conflict copy (`design-<Machine>.md`) is a byte-for-byte clone of the original, frontmatter included, so both files claim one document id. Both commands resolve their target by that id, which meant deleting the *copy* unregistered the *original* from the service (seen live 2026-08-21; the document had to be re-registered under a new id, breaking its portal links). Now, before any service call, the command scans the folder for other files carrying the same id and exits 1 listing them. The fix is to `rm` the stray file, keeping the one whose filename matches the service, then retry. Files with no `spec_doc_id` are unaffected.
+
 ## 0.45.0 — 2026-09-03 12:05 — Björn Allvin
 
 - **`bugs --json` and `backlog --json`.** The filtered rows as JSON, the service's own fields, instead of the text list or tree. Tooling that matched preview slots to items was scraping the text layout with `grep -B1` and broke on nothing more than a shell that does not word-split; now it asks for JSON and reads `number`, `status`, `deployedStage`, `deployedUrl` directly. Combine with `--all` or `--status` as before.
