@@ -4750,8 +4750,15 @@ def _doc_id_siblings(abs_path, doc_id):
         if not fname.endswith(".md"):
             continue
         fpath = os.path.join(folder, fname)
-        if fpath == abs_path or not os.path.isfile(fpath):
+        if not os.path.isfile(fpath):
             continue
+        # Compare by inode, not string: macOS/OneDrive can hand back the
+        # same name in a different Unicode form (NFC vs NFD apostrophes).
+        try:
+            if os.path.samefile(fpath, abs_path):
+                continue
+        except OSError:
+            pass
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 head = f.read(4096)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.46.1 — 2026-09-04 10:45 — Björn Allvin
+
+- **Duplicate-id guard: the given file no longer lists itself as its own twin.** Real OneDrive conflict names carry a curly apostrophe that the filesystem can return in a different Unicode form than the path typed on the command line, so a string compare missed the match and the file appeared twice in the refusal. Now compared by inode (`os.path.samefile`). Refusal behaviour unchanged.
+
 ## 0.46.0 — 2026-09-04 10:20 — Björn Allvin
 
 - **`delete-doc` and `rename-doc` refuse a duplicated `spec_doc_id`.** A OneDrive conflict copy (`design-<Machine>.md`) is a byte-for-byte clone of the original, frontmatter included, so both files claim one document id. Both commands resolve their target by that id, which meant deleting the *copy* unregistered the *original* from the service (seen live 2026-08-21; the document had to be re-registered under a new id, breaking its portal links). Now, before any service call, the command scans the folder for other files carrying the same id and exits 1 listing them. The fix is to `rm` the stray file, keeping the one whose filename matches the service, then retry. Files with no `spec_doc_id` are unaffected.
