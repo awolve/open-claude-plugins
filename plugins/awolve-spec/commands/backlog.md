@@ -57,3 +57,11 @@ Each row shows priority marker (`!!!` high, `!!` medium, `!` low), the item numb
 ```
 
 Highlight high-priority items. Mention that the same backlog can be viewed and managed in the portal at `specs.awolve.ai/portal/<project>` under the Backlog tab, with richer filtering, view-mode switching, and inline editing.
+
+## Source filter
+
+`--source widget` narrows the list to reports filed through a project's feedback user — an in-app widget, not a person with an account. The reporter shown on those rows is what the host app asserted; the feedback user's own name is the fallback. See `/awolve-spec:feedback-users`.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> --source widget
+```

@@ -45,7 +45,7 @@ Usage:
                                        — List all documents in a feature
     specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
                                        — One-call snapshot: feature status, doc statuses, unresolved comment counts
-    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
+    specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged] [--source widget]
                                        — List backlog items (default: tree view, grouped by epic;
                                          --assignee and --tag force flat view so no match is hidden
                                          under a filtered-out epic; --tag is repeatable and OR-ed)
@@ -81,7 +81,7 @@ Usage:
                                        — Delete a backlog comment (author only)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
-    specs-cli.py bugs [project-id] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
+    specs-cli.py bugs [project-id] [--source widget] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
                                        — List open bugs for a project (or all configured projects);
                                          --tag is repeatable and OR-ed
     specs-cli.py bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]
@@ -104,6 +104,16 @@ Usage:
                                        — Delete a bug comment (author only). Hard delete, audited.
     specs-cli.py delete-bug <project-id> <bug-number>
                                        — Soft-delete a bug (internal users only)
+    specs-cli.py feedback-users <project-id> [--json]
+                                       — Feedback users of a project: the credential an app's backend
+                                         holds so its users can file bugs and ideas (project admin)
+    specs-cli.py feedback-user-create <project-id> <name>
+    specs-cli.py feedback-user-update <project-id> <user-ref> [--name N] [--origins a.com,b.com|none] [--per-minute N|default] [--per-hour N|default]
+    specs-cli.py feedback-user-delete <project-id> <user-ref>
+                                       — Revokes every key; the reports it filed stay
+    specs-cli.py feedback-key-create <project-id> <user-ref> [--label L]
+                                       — Prints the key once; store it in the app's backend, never in a page
+    specs-cli.py feedback-key-revoke <project-id> <user-ref> <key-id-or-prefix>
     specs-cli.py tags <project-id> [--json]
                                        — List a project's tags with how many items wear each one
     specs-cli.py tag-create <project-id> <name> [--color C] [--description D] [--force]
@@ -158,6 +168,7 @@ import tempfile
 import time
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -2694,7 +2705,7 @@ def _print_tag_error(status_code, body):
 
 
 def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False,
-              status_filter=None, include_all=False, as_json=False):
+              status_filter=None, include_all=False, as_json=False, source_filter=None):
     """List bugs for a project or all configured projects.
 
     Default is open bugs only (everything but `resolved`/`closed`). `status_filter`
@@ -2755,6 +2766,9 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             open_bugs = _filter_by_assignee(open_bugs, assignee_filter)
         if tag_filters or untagged:
             open_bugs = [b for b in open_bugs if _matches_tag_filter(b, tag_filters or [], untagged)]
+        if source_filter:
+            # Spec 039: `widget` = filed through a project's feedback key.
+            open_bugs = [b for b in open_bugs if (b.get("source") or "") == source_filter]
         if as_json:
             # Machine-readable: the filtered rows, verbatim from the service,
             # so tooling never has to scrape the text layout. One array per
@@ -3381,7 +3395,7 @@ def delete_bug_comment(project_id, bug_number, comment_id):
 
 def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
                  overdue=False, late_to_start=False, tag_filters=None, untagged=False, include_all=False,
-                 as_json=False):
+                 as_json=False, source_filter=None):
     """List backlog items for a project or all configured projects.
 
     Spec 013:
@@ -3416,6 +3430,8 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
     # Tree view renders children only underneath a surviving parent, so an
     # assignee filter would silently swallow any match whose epic doesn't also
     # match. Flat view answers "what is on X's plate" honestly.
+    if source_filter and view == "tree":
+        view = "flat"  # spec 039: same reasoning as the assignee filter below
     if assignee_filter and view == "tree":
         view = "flat"
     # Same trap as the assignee filter: in tree view a matching child is only
@@ -3455,6 +3471,9 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             active = [i for i in active if matches_timing_filter("backlog", i, overdue, late_to_start)]
         if tag_filters or untagged:
             active = [i for i in active if _matches_tag_filter(i, tag_filters or [], untagged)]
+        if source_filter:
+            # Spec 039: `widget` = filed through a project's feedback key.
+            active = [i for i in active if (i.get("source") or "") == source_filter]
         if as_json:
             json_out.setdefault(proj["id"], active)
             continue
@@ -6348,6 +6367,224 @@ def handle_test(args):
         sys.exit(1)
 
 
+# ─── Feedback users (spec 039) ────────────────────────────────────────────────
+#
+# A feedback user is the credential an application's backend holds so the
+# app's own users can file bugs and ideas into the project from an in-app
+# widget. Its key can only create reports in that project — no reads. These
+# commands need project admin access.
+
+def _feedback_url(service_url, project_id, *parts):
+    url = f"{service_url}/api/portal/projects/{project_id}/feedback-users"
+    for p in parts:
+        url += "/" + urllib.parse.quote(str(p), safe="")
+    return url
+
+
+def _feedback_fail(status_code, body, what):
+    if status_code == 403:
+        print(f"specs: project admin access is required to {what}", file=sys.stderr)
+    elif status_code == 404:
+        print(f"specs: not found — could not {what}: {body[:200]}", file=sys.stderr)
+    else:
+        try:
+            data = json.loads(body)
+            msg = data.get("message") or data.get("error") or body[:300]
+        except Exception:
+            msg = body[:300]
+        print(f"specs: could not {what} (HTTP {status_code}): {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def _fetch_feedback_users(headers, service_url, project_id):
+    try:
+        status_code, body = api_request(_feedback_url(service_url, project_id), headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to fetch feedback users — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        _feedback_fail(status_code, body, "list feedback users")
+    return json.loads(body)
+
+
+def _resolve_feedback_user(headers, service_url, project_id, ref):
+    """A feedback user by id, email, exact name, or unique name/id prefix."""
+    users = _fetch_feedback_users(headers, service_url, project_id)
+    exact = [u for u in users if ref in (u["id"], u["email"], u["name"])]
+    if len(exact) == 1:
+        return exact[0]
+    low = ref.lower()
+    prefix = [u for u in users if u["name"].lower().startswith(low) or u["id"].lower().startswith(low)]
+    if len(prefix) == 1:
+        return prefix[0]
+    matches = exact or prefix
+    if not matches:
+        print(f"specs: no feedback user matches '{ref}' in '{project_id}'", file=sys.stderr)
+        if users:
+            print("  existing: " + ", ".join(f"{u['name']} ({u['id'][:8]})" for u in users), file=sys.stderr)
+    else:
+        print(f"specs: '{ref}' is ambiguous — " + ", ".join(f"{u['name']} ({u['id'][:8]})" for u in matches), file=sys.stderr)
+    sys.exit(1)
+
+
+def _print_feedback_user(u):
+    d = u.get("defaults") or {}
+    per_min = u.get("ratePerMinute") or d.get("ratePerMinute")
+    per_hour = u.get("ratePerHour") or d.get("ratePerHour")
+    origins = u.get("originAllowlist") or []
+    print(f"  {u['name']}")
+    print(f"    id:       {u['id']}")
+    print(f"    email:    {u['email']}")
+    print(f"    limits:   {per_min}/min · {per_hour}/hour" + ("" if u.get("ratePerMinute") or u.get("ratePerHour") else "  (defaults)"))
+    print(f"    origins:  {', '.join(origins) if origins else 'any'}")
+    keys = u.get("keys") or []
+    if not keys:
+        print("    keys:     none active — create one with feedback-key-create")
+    for k in keys:
+        used = (k.get("lastUsedAt") or "never")[:16].replace("T", " ")
+        label = f" ({k['label']})" if k.get("label") else ""
+        print(f"    key:      {k['keyPrefix']}{label}  id {k['id'][:8]}…  last used {used}")
+
+
+def list_feedback_users(project_id, as_json=False):
+    cfg, headers = _require_config_and_auth()
+    users = _fetch_feedback_users(headers, cfg["service_url"], project_id)
+    if as_json:
+        print(json.dumps(users, indent=2))
+        return
+    if not users:
+        print(f"specs: no feedback users in '{project_id}' — create one with feedback-user-create")
+        return
+    print(f"specs: {len(users)} feedback user(s) in '{project_id}'\n")
+    for u in users:
+        _print_feedback_user(u)
+        print()
+
+
+def create_feedback_user(project_id, name):
+    cfg, headers = _require_config_and_auth()
+    try:
+        status_code, body = api_request(_feedback_url(cfg["service_url"], project_id), method="POST", headers=headers, data={"name": name})
+    except ConnectionError as e:
+        print(f"specs: failed to create feedback user — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        _feedback_fail(status_code, body, "create the feedback user")
+    u = json.loads(body)
+    print(f"specs: created feedback user '{u['name']}' in '{project_id}' (id {u['id']})")
+    print(f"  next: specs-cli.py feedback-key-create {project_id} {u['id'][:8]} --label \"<app and environment>\"")
+
+
+def update_feedback_user(project_id, ref, name=None, origins=None, per_minute=None, per_hour=None):
+    cfg, headers = _require_config_and_auth()
+    u = _resolve_feedback_user(headers, cfg["service_url"], project_id, ref)
+    patch = {}
+    if name is not None:
+        patch["name"] = name
+    if origins is not None:
+        patch["originAllowlist"] = [] if origins.strip().lower() in ("none", "any", "") else [o.strip() for o in origins.split(",") if o.strip()]
+    for key, raw in (("ratePerMinute", per_minute), ("ratePerHour", per_hour)):
+        if raw is None:
+            continue
+        if raw.strip().lower() in ("default", "none", ""):
+            patch[key] = None
+        elif raw.isdigit() and int(raw) > 0:
+            patch[key] = int(raw)
+        else:
+            print(f"specs: {key} must be a positive integer or 'default'", file=sys.stderr)
+            sys.exit(1)
+    if not patch:
+        print("specs: nothing to update — pass --name, --origins, --per-minute or --per-hour", file=sys.stderr)
+        sys.exit(1)
+    try:
+        status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"]), method="PATCH", headers=headers, data=patch)
+    except ConnectionError as e:
+        print(f"specs: failed to update feedback user — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        _feedback_fail(status_code, body, "update the feedback user")
+    print(f"specs: updated feedback user '{u['name']}'")
+    _print_feedback_user(json.loads(body))
+
+
+def delete_feedback_user(project_id, ref):
+    cfg, headers = _require_config_and_auth()
+    u = _resolve_feedback_user(headers, cfg["service_url"], project_id, ref)
+    try:
+        status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"]), method="DELETE", headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to delete feedback user — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        _feedback_fail(status_code, body, "delete the feedback user")
+    n = json.loads(body).get("revokedKeys", 0)
+    print(f"specs: deleted feedback user '{u['name']}' — {n} key(s) revoked; its reports stay as they are")
+
+
+def create_feedback_key(project_id, ref, label=None):
+    cfg, headers = _require_config_and_auth()
+    u = _resolve_feedback_user(headers, cfg["service_url"], project_id, ref)
+    try:
+        status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"], "keys"), method="POST", headers=headers, data={"label": label} if label else {})
+    except ConnectionError as e:
+        print(f"specs: failed to create key — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        _feedback_fail(status_code, body, "create the key")
+    k = json.loads(body)
+    print(f"specs: new key for feedback user '{u['name']}'" + (f" ({k['label']})" if k.get("label") else ""))
+    print()
+    print(f"  {k['key']}")
+    print()
+    print("  This is the only time the key is shown. Put it in the app's backend secret store")
+    print("  (Key Vault or environment) — never in page JavaScript. Revoke with feedback-key-revoke.")
+
+
+def revoke_feedback_key(project_id, ref, key_ref):
+    cfg, headers = _require_config_and_auth()
+    u = _resolve_feedback_user(headers, cfg["service_url"], project_id, ref)
+    keys = u.get("keys") or []
+    match = [k for k in keys if k["id"] == key_ref or k["id"].startswith(key_ref) or k["keyPrefix"].startswith(key_ref.rstrip("."))]
+    if len(match) != 1:
+        if not match:
+            print(f"specs: no active key of '{u['name']}' matches '{key_ref}'", file=sys.stderr)
+        else:
+            print(f"specs: '{key_ref}' matches several keys — use the id", file=sys.stderr)
+        for k in keys:
+            print(f"  {k['keyPrefix']}  id {k['id']}", file=sys.stderr)
+        sys.exit(1)
+    k = match[0]
+    try:
+        status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"], "keys", k["id"]), method="DELETE", headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to revoke key — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        _feedback_fail(status_code, body, "revoke the key")
+    print(f"specs: revoked key {k['keyPrefix']} of feedback user '{u['name']}' — the app's requests with it fail from now on")
+
+
+def _split_flags(args, value_flags):
+    """(positional, {flag: value}, {bare flags}) for a simple `--x V` grammar."""
+    positional, vals, bare = [], {}, set()
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in value_flags:
+            if i + 1 >= len(args):
+                print(f"specs: {a} requires a value", file=sys.stderr)
+                sys.exit(1)
+            vals[a] = args[i + 1]
+            i += 2
+            continue
+        if a.startswith("--"):
+            bare.add(a)
+        else:
+            positional.append(a)
+        i += 1
+    return positional, vals, bare
+
+
 def main():
     args = sys.argv[1:]
 
@@ -6499,7 +6736,7 @@ def main():
         set_status(args[1], args[2])
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
-        VALUE_FLAGS_BUGS = {"--assignee", "--tag", "--status"}
+        VALUE_FLAGS_BUGS = {"--assignee", "--tag", "--status", "--source"}
         if proj is None:
             for i, a in enumerate(args[1:], 1):
                 if a.startswith("-"): continue
@@ -6514,11 +6751,13 @@ def main():
             if a == "--tag" and i + 1 < len(args): tag_filters.append(args[i + 1])
         if "--unassigned" in args: assignee_filter = "none"
         status_filter = None
+        source_filter = None
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
+            if a == "--source" and i + 1 < len(args): source_filter = args[i + 1]
         list_bugs(proj, assignee_filter=assignee_filter, tag_filters=tag_filters,
                   untagged="--untagged" in args, status_filter=status_filter,
-                  include_all="--all" in args, as_json="--json" in args)
+                  include_all="--all" in args, as_json="--json" in args, source_filter=source_filter)
     elif cmd == "view-bug":
         as_json = "--json" in args
         save_images = "--images" in args
@@ -6687,6 +6926,43 @@ def main():
             print("Usage: specs-cli.py tags <project-id> [--json]", file=sys.stderr)
             sys.exit(1)
         list_tags(positional[0], as_json=as_json)
+    elif cmd == "feedback-users":
+        positional, vals, bare = _split_flags(args[1:], set())
+        if len(positional) < 1:
+            print("Usage: specs-cli.py feedback-users <project-id> [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_feedback_users(positional[0], as_json="--json" in bare)
+    elif cmd == "feedback-user-create":
+        positional, vals, bare = _split_flags(args[1:], set())
+        if len(positional) < 2:
+            print("Usage: specs-cli.py feedback-user-create <project-id> <name>", file=sys.stderr)
+            sys.exit(1)
+        create_feedback_user(positional[0], " ".join(positional[1:]))
+    elif cmd == "feedback-user-update":
+        positional, vals, bare = _split_flags(args[1:], {"--name", "--origins", "--per-minute", "--per-hour"})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py feedback-user-update <project-id> <user-ref> [--name N] [--origins a.com,b.com|none] [--per-minute N|default] [--per-hour N|default]", file=sys.stderr)
+            sys.exit(1)
+        update_feedback_user(positional[0], positional[1], name=vals.get("--name"), origins=vals.get("--origins"),
+                             per_minute=vals.get("--per-minute"), per_hour=vals.get("--per-hour"))
+    elif cmd == "feedback-user-delete":
+        positional, vals, bare = _split_flags(args[1:], set())
+        if len(positional) < 2:
+            print("Usage: specs-cli.py feedback-user-delete <project-id> <user-ref>", file=sys.stderr)
+            sys.exit(1)
+        delete_feedback_user(positional[0], positional[1])
+    elif cmd == "feedback-key-create":
+        positional, vals, bare = _split_flags(args[1:], {"--label"})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py feedback-key-create <project-id> <user-ref> [--label L]", file=sys.stderr)
+            sys.exit(1)
+        create_feedback_key(positional[0], positional[1], label=vals.get("--label"))
+    elif cmd == "feedback-key-revoke":
+        positional, vals, bare = _split_flags(args[1:], set())
+        if len(positional) < 3:
+            print("Usage: specs-cli.py feedback-key-revoke <project-id> <user-ref> <key-id-or-prefix>", file=sys.stderr)
+            sys.exit(1)
+        revoke_feedback_key(positional[0], positional[1], positional[2])
     elif cmd == "tag-create":
         VALUE_FLAGS = {"--color", "--description"}
         positional = []
@@ -6758,7 +7034,7 @@ def main():
         # id, so `backlog --status idea` (no project) looked for a project called
         # "idea". That bites much harder now that `backlog --assignee <email>`
         # across all projects is a thing people will type.
-        VALUE_FLAGS = {"--status", "--priority", "--assignee", "--tag"}
+        VALUE_FLAGS = {"--status", "--priority", "--assignee", "--tag", "--source"}
         positional = []
         skip_next = False
         for i, a in enumerate(args[1:], 1):
@@ -6778,10 +7054,12 @@ def main():
         priority_filter = None
         assignee_filter = None
         tag_filters = []
+        source_filter = None
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args): status_filter = args[i + 1]
             if a == "--priority" and i + 1 < len(args): priority_filter = args[i + 1]
             if a == "--assignee" and i + 1 < len(args): assignee_filter = args[i + 1]
+            if a == "--source" and i + 1 < len(args): source_filter = args[i + 1]
             # Spec 027: repeatable, OR-ed.
             if a == "--tag" and i + 1 < len(args): tag_filters.append(args[i + 1])
         if "--unassigned" in args: assignee_filter = "none"
@@ -6791,7 +7069,7 @@ def main():
         list_backlog(proj, view=view, status_filter=status_filter, priority_filter=priority_filter,
                      assignee_filter=assignee_filter, overdue=overdue_filter, late_to_start=late_filter,
                      tag_filters=tag_filters, untagged="--untagged" in args, include_all="--all" in args,
-                     as_json="--json" in args)
+                     as_json="--json" in args, source_filter=source_filter)
     elif cmd == "backlog-add":
         # Spec 013: --parent <id-or-#N> and --epic
         skip_next = False

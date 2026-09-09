@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.47.0 — 2026-09-09 — Björn Allvin
+
+- **Feedback users** (spec-service spec 039). Six commands for the credential an app's backend holds so the app's own users can file bugs and ideas from an in-app widget, without any of them holding a key: `feedback-users`, `feedback-user-create`, `feedback-user-update` (name, origin allowlist, per-minute and per-hour limits), `feedback-user-delete` (revokes every key; reports stay), `feedback-key-create` (the key is printed once, for the backend's secret store) and `feedback-key-revoke`. A feedback key can only create bugs, backlog items and attachments in its own project; the service refuses everything else before any route runs. Needs project admin access and spec-service 0.123.0.
+- **`bugs --source widget` and `backlog --source widget`** narrow a list to reports that came in through a feedback user. The reporter shown on those rows is what the host app asserted, with the feedback user's own name as the fallback.
+
 ## 0.46.1 — 2026-09-04 10:45 — Björn Allvin
 
 - **Duplicate-id guard: the given file no longer lists itself as its own twin.** Real OneDrive conflict names carry a curly apostrophe that the filesystem can return in a different Unicode form than the path typed on the command line, so a string compare missed the match and the file appeared twice in the refusal. Now compared by inode (`os.path.samefile`). Refusal behaviour unchanged.

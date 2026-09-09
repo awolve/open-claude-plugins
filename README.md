@@ -88,6 +88,14 @@ Run `/awolve-spec:help` for the full list, or see below:
 | `/awolve-spec:tags` | List a project's tags and how many items use each |
 | `/awolve-spec:tag-create` | Create a tag (warns when a similar one exists) |
 
+### Feedback users
+
+| Command | Description |
+|---------|-------------|
+| `/awolve-spec:feedback-users` | List a project's feedback users (write-only credentials for in-app feedback widgets) |
+| `/awolve-spec:feedback-user-create` | Create one; `feedback-user-update` / `feedback-user-delete` manage it |
+| `/awolve-spec:feedback-key-create` | Mint its key, shown once; `feedback-key-revoke` is the kill switch |
+
 ## How it works
 
 - **SessionStart hook** — pulls latest specs from the service, writes them to configured paths with version metadata in YAML frontmatter

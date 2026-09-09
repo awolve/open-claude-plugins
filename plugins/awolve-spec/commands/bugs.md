@@ -33,3 +33,11 @@ Omitting the project id runs across every configured project — that's how to a
 Show the results. Each row carries its tags as `#name` after the title, and the assignee as `· @Name` when there is one. If there are critical or high severity bugs, highlight them — and call out high-severity bugs sitting unassigned, since those are the ones nobody has picked up.
 
 Also mention that bugs can be viewed in the portal at `specs.awolve.ai/portal/<project>/bugs`.
+
+## Source filter
+
+`--source widget` narrows the list to reports filed through a project's feedback user — an in-app widget, not a person with an account. The reporter shown on those rows is what the host app asserted; the feedback user's own name is the fallback. See `/awolve-spec:feedback-users`.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bugs <project-id> --source widget
+```

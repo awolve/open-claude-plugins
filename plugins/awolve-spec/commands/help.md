@@ -73,6 +73,16 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:edit-comment` | Edit a spec-doc comment (author only) |
 | `/awolve-spec:delete-comment` | Delete a spec-doc comment (author only) |
 
+
+### Feedback users (in-app feedback widgets)
+| Command | Description |
+|---------|-------------|
+| `/awolve-spec:feedback-users` | List a project's feedback users — write-only credentials an app's backend holds so its users can file bugs and ideas |
+| `/awolve-spec:feedback-user-create` | Create a feedback user on a project |
+| `/awolve-spec:feedback-user-update` | Rename it, or set its origin allowlist and rate limits |
+| `/awolve-spec:feedback-user-delete` | Delete it and revoke every key; its reports stay |
+| `/awolve-spec:feedback-key-create` | Mint a key (shown once) for the app's backend secret store |
+| `/awolve-spec:feedback-key-revoke` | Revoke one key — the kill switch |
 ### Attachments
 | Command | Description |
 |---------|-------------|
