@@ -61,6 +61,8 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:edit-backlog-comment` | Edit a backlog comment (author only) |
 | `/awolve-spec:delete-backlog-comment` | Delete a backlog comment (author only) |
 | `/awolve-spec:bugs` | List open bugs (filterable by assignee and tag) |
+| `/awolve-spec:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
+| `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
 | `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, tags, or deployment info |

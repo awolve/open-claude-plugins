@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.48.0 — 2026-09-10 — Björn Allvin
+
+- **`my-daily` and `my-weekly`** (spec-service spec 041). Two commands that print the same lists as the assignment notification mails, built by the same service code: `my-daily` shows what someone else assigned to you since 07:00 on the previous weekday (`--since` for another window, `--kind bug|backlog`), and `my-weekly` shows everything open assigned to you, sorted like the weekly mail "My current things in spec service". Both span every project you can open, not only the ones in your specs config, and both take `--json`. Needs spec-service 0.127.0.
+
 ## 0.47.0 — 2026-09-09 — Björn Allvin
 
 - **Feedback users** (spec-service spec 039). Six commands for the credential an app's backend holds so the app's own users can file bugs and ideas from an in-app widget, without any of them holding a key: `feedback-users`, `feedback-user-create`, `feedback-user-update` (name, origin allowlist, per-minute and per-hour limits), `feedback-user-delete` (revokes every key; reports stay), `feedback-key-create` (the key is printed once, for the backend's secret store) and `feedback-key-revoke`. A feedback key can only create bugs, backlog items and attachments in its own project; the service refuses everything else before any route runs. Needs project admin access and spec-service 0.123.0.

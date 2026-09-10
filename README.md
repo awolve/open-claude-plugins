@@ -82,6 +82,8 @@ Run `/awolve-spec:help` for the full list, or see below:
 | `/awolve-spec:backlog` | List backlog items |
 | `/awolve-spec:backlog-add` | Add a new idea or feature request |
 | `/awolve-spec:bugs` | List open bugs |
+| `/awolve-spec:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
+| `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:edit-backlog-comment` | Edit your own comment on a backlog item |
 | `/awolve-spec:edit-bug-comment` | Edit your own comment on a bug |

@@ -81,6 +81,11 @@ Usage:
                                        — Delete a backlog comment (author only)
     specs-cli.py restore-backlog <project-id> <item-uuid>
                                        — Restore a soft-deleted backlog item (internal users only)
+    specs-cli.py my-daily [--since DATE] [--kind bug|backlog] [--json]
+                                       — What was assigned to you recently, across every project you can open
+                                         (the daily notification mail's list; default window: since 07:00 on the previous weekday)
+    specs-cli.py my-weekly [--json]    — Everything open assigned to you, across every project you can open
+                                         (the weekly mail "My current things in spec service")
     specs-cli.py bugs [project-id] [--source widget] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
                                        — List open bugs for a project (or all configured projects);
                                          --tag is repeatable and OR-ed
@@ -2702,6 +2707,109 @@ def _print_tag_error(status_code, body):
     _print_tag_suggestions(data)
     print("  create it first with `tag-create`, or use an existing tag", file=sys.stderr)
     return True
+
+
+def _my_assignments(path, params=None):
+    """GET one of the caller's own assignment lists (spec-service spec 041).
+
+    The service builds these with the same code as the daily and weekly
+    notification mails, so the CLI shows exactly what the mail would. They span
+    every project the caller can open, not only the projects in local config.
+    """
+    import urllib.parse
+    cfg = config.read_config()
+    if not cfg:
+        print("specs: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    query = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = f"{cfg['service_url']}{path}{query}"
+    try:
+        status_code, body = api_request(url, headers=headers)
+    except ConnectionError as e:
+        print(f"specs: failed to fetch your assignments — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print("specs: this spec service does not have assignment lists yet (needs spec-service 0.127.0)", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        try:
+            message = json.loads(body).get("error") or f"HTTP {status_code}"
+        except ValueError:
+            message = f"HTTP {status_code}"
+        print(f"specs: failed to fetch your assignments — {message}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(body)
+
+
+def _local_time(iso):
+    """'2026-09-10T12:47:20.000Z' → '2026-09-10 14:47' in this machine's time zone."""
+    from datetime import datetime
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return iso
+
+
+def _item_label(item):
+    kind = "Bug" if item.get("kind") == "bug" else "Backlog"
+    return f"{kind} #{item['number']}" if item.get("number") is not None else kind
+
+
+def _print_by_project(items, detail):
+    project = None
+    for item in items:
+        if item.get("projectName") != project:
+            project = item.get("projectName")
+            print(f"\n{project}")
+        print(f"  {_item_label(item)}  [{item.get('rank')}]  {item.get('title')}")
+        print(f"    {detail(item)}")
+        print(f"    {item.get('url')}")
+
+
+def my_daily(since=None, kind=None, as_json=False):
+    """The daily mail's list: assigned to you by someone else, still yours."""
+    params = {}
+    if since:
+        params["since"] = since
+    if kind:
+        params["kind"] = kind
+    data = _my_assignments("/api/portal/my-assignments/recent", params)
+    if as_json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    items = data.get("items") or []
+    print(f"specs: {len(items)} item(s) assigned to you since {_local_time(data.get('since'))}")
+    if not items:
+        print("  (nothing new)")
+        return
+    _print_by_project(items, lambda i: f"from {i.get('assignerName')} · {_local_time(i.get('assignedAt'))}")
+
+
+def my_weekly(as_json=False):
+    """The weekly mail's list: everything open assigned to you."""
+    data = _my_assignments("/api/portal/my-assignments/current")
+    if as_json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    items = data.get("items") or []
+    print(f"specs: {len(items)} open item(s) assigned to you")
+    if not items:
+        print("  (nothing is assigned to you right now)")
+        return
+    def detail(i):
+        parts = [i.get("status") or ""]
+        if i.get("dueDate"):
+            parts.append(f"due {i['dueDate']}")
+        if i.get("overdue"):
+            parts.append("OVERDUE")
+        return " · ".join(p for p in parts if p)
+    _print_by_project(items, detail)
 
 
 def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False,
@@ -6734,6 +6842,18 @@ def main():
             print(f"  Document statuses: {', '.join(DOCUMENT_STATUSES)}", file=sys.stderr)
             sys.exit(1)
         set_status(args[1], args[2])
+    elif cmd == "my-daily":
+        since = None
+        kind = None
+        for i, a in enumerate(args):
+            if a == "--since" and i + 1 < len(args): since = args[i + 1]
+            if a == "--kind" and i + 1 < len(args): kind = args[i + 1]
+        if kind is not None and kind not in ("bug", "backlog"):
+            print("specs: --kind must be bug or backlog", file=sys.stderr)
+            sys.exit(1)
+        my_daily(since=since, kind=kind, as_json="--json" in args)
+    elif cmd == "my-weekly":
+        my_weekly(as_json="--json" in args)
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
         VALUE_FLAGS_BUGS = {"--assignee", "--tag", "--status", "--source"}
