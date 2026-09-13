@@ -1,4 +1,4 @@
-# Specs Plugin
+# Awolve Signum Plugin
 
 Claude Code plugin for spec-driven development with Awolve Signum (specs.awolve.ai).
 

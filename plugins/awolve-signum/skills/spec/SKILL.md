@@ -3,7 +3,7 @@ name: awolve-signum:spec
 description: Spec-driven development — create, sync, and manage spec documents. Use when the user mentions specs, wants to create a spec, work on specs, read specs, edit specs, plan a feature, or discuss feature specifications.
 ---
 
-# Specs Plugin
+# Specs in Awolve Signum
 
 Spec-driven development workflow and sync with Awolve Signum (specs.awolve.ai).
 

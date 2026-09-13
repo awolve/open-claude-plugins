@@ -1,6 +1,6 @@
 {
   "name": "awolve-signum",
-  "version": "0.49.1",
+  "version": "0.49.2",
   "description": "Work with Awolve Signum from Claude Code — write and sync specs, and manage backlog, bugs and assignments.",
   "author": {
     "name": "Awolve",

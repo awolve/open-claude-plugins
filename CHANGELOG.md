@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.2 — 2026-09-13
+
+- The spec skill's heading reads "Specs in Awolve Signum" and the plugin's contributor notes are headed "Awolve Signum Plugin", both instead of "Specs Plugin". The skill keeps its name, `awolve-signum:spec`: a spec is the document it covers, not the old product name. No behaviour change.
+
 ## 0.49.1 — 2026-09-13
 
 - **awolve-signum describes what it does.** The plugin and marketplace description said only "create, sync, and manage spec documents"; it now reads "Work with Awolve Signum from Claude Code — write and sync specs, and manage backlog, bugs and assignments." No behaviour change.
