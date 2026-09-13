@@ -4,7 +4,7 @@ description: Change the status of a feature or document
 
 # /awolve-spec:set-status
 
-Change the status of a feature or document in the spec service.
+Change the status of a feature or document in Signum.
 
 ## Instructions
 

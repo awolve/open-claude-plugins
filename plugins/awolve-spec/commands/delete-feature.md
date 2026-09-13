@@ -5,7 +5,7 @@ argument-hint: [project-id] [feature-name]
 
 # /awolve-spec:delete-feature
 
-Delete a feature and all its documents from both the local filesystem and the spec service.
+Delete a feature and all its documents from both the local filesystem and Signum.
 
 ## Instructions
 

@@ -85,7 +85,7 @@ Usage:
                                        — What was assigned to you recently, across every project you can open
                                          (the daily notification mail's list; default window: since 07:00 on the previous weekday)
     specs-cli.py my-weekly [--json]    — Everything open assigned to you, across every project you can open
-                                         (the weekly mail "My current things in spec service")
+                                         (the weekly mail "My current things in Signum")
     specs-cli.py bugs [project-id] [--source widget] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
                                        — List open bugs for a project (or all configured projects);
                                          --tag is repeatable and OR-ed
@@ -142,7 +142,7 @@ Usage:
     specs-cli.py versions <file-path>  — List version history
     specs-cli.py save <file-path> <summary> [--source <source>]
                                        — Save current file as a named version
-    specs-cli.py service-status        — Check spec service health
+    specs-cli.py service-status        — Check Signum health
     specs-cli.py post-tool-use         — Hook: read tool use JSON from stdin, push if spec
     specs-cli.py attach <file-path> [<project-id>/<feature-name>]
                                        — Upload a binary file as an attachment to a feature
@@ -445,7 +445,7 @@ def state_needs_full_sync(project_state):
 # ---------------------------------------------------------------------------
 
 def resolve_doc_id(file_path):
-    """Resolve a local spec file path to a spec service document ID.
+    """Resolve a local spec file path to a Signum document ID.
 
     Returns (cfg, headers, service_url, doc_id, project_id, feature_name, filename).
     Exits on error.
@@ -824,7 +824,7 @@ def list_versions(file_path, as_json=False):
 
 
 def save_version(file_path, summary, source="manual"):
-    """Save the current file as a new named version in the spec service."""
+    """Save the current file as a new named version in Signum."""
     _, headers, service_url, doc_id, *_ = resolve_doc_id(file_path)
 
     abs_path = os.path.abspath(file_path)
@@ -872,7 +872,7 @@ def save_version(file_path, summary, source="manual"):
 # ---------------------------------------------------------------------------
 
 def service_status():
-    """Check spec service health."""
+    """Check Signum health."""
     _, headers, service_url = _init_and_auth()
 
     try:
@@ -2028,6 +2028,56 @@ def show_status():
 # PostToolUse hook
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Hooks: one sync client per session
+# ---------------------------------------------------------------------------
+# The plugin ships under two names while the product is renamed: awolve-signum,
+# and awolve-spec so existing installs keep working. Both carry the same hooks.
+# With both enabled, every spec edit would be pushed twice at once and one push
+# would hit a version conflict, so the older name stands down whenever the
+# newer one is enabled.
+
+SUCCESSOR_PLUGIN = "awolve-signum"
+SUCCESSOR_PLUGIN_KEY = "awolve-signum@awolve-open-claude-plugins"
+
+
+def _plugin_name():
+    """The name in this copy's own plugin.json."""
+    manifest = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".claude-plugin", "plugin.json")
+    try:
+        with open(manifest, encoding="utf-8") as f:
+            return json.load(f).get("name") or ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def _plugin_enabled(key, project_dir):
+    """Whether Claude Code settings enable a plugin.
+
+    Later scopes override earlier ones: user, then project, then project-local.
+    """
+    paths = [os.path.expanduser("~/.claude/settings.json")]
+    if project_dir:
+        paths.append(os.path.join(project_dir, ".claude", "settings.json"))
+        paths.append(os.path.join(project_dir, ".claude", "settings.local.json"))
+    enabled = False
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                plugins = json.load(f).get("enabledPlugins")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(plugins, dict) and key in plugins:
+            enabled = bool(plugins[key])
+    return enabled
+
+
+def _hooks_belong_to_successor(project_dir, plugin_name=None):
+    """True when this copy is the older name and the newer plugin is enabled."""
+    name = _plugin_name() if plugin_name is None else plugin_name
+    return name != SUCCESSOR_PLUGIN and _plugin_enabled(SUCCESSOR_PLUGIN_KEY, project_dir)
+
+
 def handle_post_tool_use():
     """Read PostToolUse JSON from stdin. Push if a spec file was edited."""
     try:
@@ -2105,7 +2155,7 @@ BACKLOG_STATUSES = ["idea", "planned", "blocked", "in_progress", "ready_for_test
 # ---------------------------------------------------------------------------
 # Timing (spec 023) — start date, due date, effort estimate.
 #
-# These rules MIRROR src/lib/timing.ts in the spec service. The service does
+# These rules MIRROR src/lib/timing.ts in Signum. The service does
 # not expose an overdue filter (deliberately — "today" belongs to the viewer,
 # and baking a timezone into the API would be wrong for external
 # collaborators), so the CLI derives it locally from the returned date
@@ -2733,7 +2783,7 @@ def _my_assignments(path, params=None):
         print(f"specs: failed to fetch your assignments — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print("specs: this spec service does not have assignment lists yet (needs spec-service 0.127.0)", file=sys.stderr)
+        print("specs: this Signum instance does not have assignment lists yet (needs spec-service 0.127.0)", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         try:
@@ -4214,7 +4264,7 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
             err_body = {}
         if err_body.get("error") == "project_not_found":
             print(
-                f"specs: project '{project_id}' is not registered with the spec service.\n"
+                f"specs: project '{project_id}' is not registered with Signum.\n"
                 f"       Your local config lists it, but the server doesn't know about it.\n"
                 f"       Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
                 f"       or check the canonical list via the portal at /api/portal/projects.",
@@ -4461,7 +4511,7 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
             err_body = {}
         if err_body.get("error") == "project_not_found":
             print(
-                f"specs: project '{project_id}' is not registered with the spec service.\n"
+                f"specs: project '{project_id}' is not registered with Signum.\n"
                 f"       Your local config lists it, but the server doesn't know about it.\n"
                 f"       Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
                 f"       or check the canonical list via the portal at /api/portal/projects.",
@@ -7506,6 +7556,19 @@ def main():
         save_version(args[1], args[2], source=source)
     elif cmd == "service-status":
         service_status()
+    elif cmd == "hook":
+        # Entry point for hooks.json. The older plugin name runs nothing when
+        # the newer one is enabled; that copy owns sync for the session.
+        event = args[1] if len(args) > 1 else ""
+        if event not in ("session-start", "post-tool-use"):
+            print("Usage: specs-cli.py hook <session-start|post-tool-use>", file=sys.stderr)
+            sys.exit(1)
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+        if not _hooks_belong_to_successor(project_dir):
+            if event == "session-start":
+                pull(project_filter=None, quiet=True, delete_mode="trash", force_full=False)
+            else:
+                handle_post_tool_use()
     elif cmd == "post-tool-use":
         handle_post_tool_use()
     elif cmd == "attach":

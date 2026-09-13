@@ -4,7 +4,7 @@ description: Delete an attachment by id
 
 # /awolve-spec:delete-attachment
 
-Permanently remove an attachment from the spec service. Permitted for the uploader (matched by email) or any internal user.
+Permanently remove an attachment from Signum. Permitted for the uploader (matched by email) or any internal user.
 
 ## Instructions
 

@@ -84,7 +84,7 @@ Adapt the template to the feature — not every section applies to every feature
 
 ### 5. Register and push
 
-If this is a new feature (folder didn't exist before), register it in the spec service:
+If this is a new feature (folder didn't exist before), register it in Signum:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py create-feature <project-id> <feature-name>

@@ -5,7 +5,7 @@ argument-hint: [project-id] [feature-name]
 
 # /awolve-spec:create-feature
 
-Create a new feature in a project, registered in both the local filesystem and the spec service.
+Create a new feature in a project, registered in both the local filesystem and Signum.
 
 ## Instructions
 

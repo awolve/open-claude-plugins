@@ -5,7 +5,7 @@ argument-hint: <file-path> [<project-id>/<feature-name> | --bug <project> <#N> |
 
 # /awolve-spec:attach
 
-Upload a local binary file (image, PDF, Excel, etc.) as an attachment. Three target entities are supported: **feature** (default), **bug**, and **backlog item**. The file is stored in Azure Blob Storage via the spec service. Feature attachments are mirrored back to every team member's local feature folder on the next `/awolve-spec:pull`; bug + backlog attachments live only in the portal/server.
+Upload a local binary file (image, PDF, Excel, etc.) as an attachment. Three target entities are supported: **feature** (default), **bug**, and **backlog item**. The file is stored in Azure Blob Storage via Signum. Feature attachments are mirrored back to every team member's local feature folder on the next `/awolve-spec:pull`; bug + backlog attachments live only in the portal/server.
 
 ## When to use
 

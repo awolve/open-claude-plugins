@@ -5,7 +5,7 @@ argument-hint: [file-path]
 
 # /awolve-spec:delete-doc
 
-Delete a spec document from both the local filesystem and the spec service.
+Delete a spec document from both the local filesystem and Signum.
 
 ## Instructions
 

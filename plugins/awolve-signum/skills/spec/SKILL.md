@@ -1,0 +1,250 @@
+---
+name: awolve-signum:spec
+description: Spec-driven development — create, sync, and manage spec documents. Use when the user mentions specs, wants to create a spec, work on specs, read specs, edit specs, plan a feature, or discuss feature specifications.
+---
+
+# Specs Plugin
+
+Spec-driven development workflow and sync with Awolve Signum (specs.awolve.ai).
+
+## Spec-driven development
+
+If you're going to spec it, spec it properly. There is one spec format with three canonical files — use the ones that make sense for the feature.
+
+### Canonical files
+
+| File | Purpose | When to use |
+|------|---------|-------------|
+| `requirements.md` | What to build and why | When stakeholders need to approve the what |
+| `design.md` | How to build it | Always — minimum viable spec |
+| `plan.md` | Implementation breakdown | When the build needs a task breakdown |
+
+These are the only spec document names. Other files in the folder are supporting material (diagrams, schemas) — only valid if referenced by one of the three.
+
+### Commands — spec creation
+
+| Command | What it does |
+|---------|-------------|
+| `/awolve-signum:req` | Write `requirements.md` — push to service — stop for review |
+| `/awolve-signum:design` | Write `design.md` — push — stop for review |
+| `/awolve-signum:infra` | Enrich `design.md` with infrastructure details (SIGL-inspired) |
+| `/awolve-signum:plan` | Write `plan.md` — push — ready to implement |
+| `/awolve-signum:retro` | Document work after the fact (`design.md` + optional `plan.md`) |
+
+Each phase is a separate command invocation. Do not write multiple spec files in one session unless the user explicitly asks.
+
+### Flows
+
+**Stakeholder-driven:** requirements → review → design → review → (infra) → plan → review → implement
+**Self-directed:** design → (infra) → plan → implement
+**Small feature:** design → implement
+**No spec:** build it → optionally `/awolve-signum:retro`
+
+### Closing a feature — run this checklist proactively
+
+Implementation finished ≠ feature done. When the build wraps, close the loop without waiting for the user to ask "is it closed?":
+
+1. **Docs match reality** — `design.md` and `plan.md` reflect what was actually built (update them, or `/awolve-signum:retro` if the work outran the spec). All plan tasks checked off.
+2. **Shipped per the repo's documented ship cycle** — version bumped where the repo versions, branches synced, deployed and verified (at Awolve: the repo's `CLAUDE.md` ship & deploy section). A local-only "done" is not done.
+3. **Statuses flipped** — feature → `completed` via `/awolve-signum:set-status`; related bugs → `resolved` with a closing `bug-comment` (commit SHA, version, rollout notes); doc review comments addressed and resolved via `resolve-comment`.
+4. **Living docs updated** — if the feature changed infrastructure or shared project knowledge, update whatever living records the project keeps (at Awolve: the project's SIGL files and `shared/` docs; other orgs: your architecture/infra docs of record).
+
+### Keep specs current mid-build
+
+Specs track reality, not intentions. The moment a decision lands — in chat, in a meeting, in code — update the affected spec doc in the same session. Check off plan tasks as they complete. Never leave "is the spec updated?" as a question the user has to ask.
+
+### Portal visibility
+
+Everything under the synced specs tree — including `specs/shared/` — is visible to **every portal user with access to the project**, which can include external stakeholders, clients, and testers. Never place non-shareable material there (infrastructure inventories, credentials, internal strategy, cost notes), and never rely on file extensions to keep something unexposed.
+
+### Commands — sync and management
+
+- `/awolve-signum:pull` — Pull latest spec files from the service
+- `/awolve-signum:login` — Authenticate with Signum
+- `/awolve-signum:status` — Show sync status of local spec files
+- `/awolve-signum:set-status` — Change feature or document status
+- `/awolve-signum:create-feature` — Create a new feature in a project
+- `/awolve-signum:create-doc` — Add a document to an existing feature
+- `/awolve-signum:rename-feature` — Rename a feature
+- `/awolve-signum:rename-doc` — Rename a document
+- `/awolve-signum:delete-doc` — Delete a document
+- `/awolve-signum:delete-feature` — Delete a feature and all its documents
+- `/awolve-signum:list-features` — List all features in a project
+- `/awolve-signum:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
+- `/awolve-signum:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
+- `/awolve-signum:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
+- `/awolve-signum:backlog-update` — Update title/description/priority/status/assignee/tags on an existing item
+- `/awolve-signum:backlog-delete` — Soft-delete an item (cascades to children if it's an epic)
+- `/awolve-signum:bugs` — List open bugs for a project (`--assignee`/`--unassigned` by owner, `--tag`/`--untagged` by label)
+- `/awolve-signum:view-bug` — Show full details of a single bug (description, severity, repro)
+- `/awolve-signum:bug` — Report a new bug
+- `/awolve-signum:update-bug` — Edit a bug's title, description, severity, assignee, or tags
+- `/awolve-signum:set-bug-status` — Change a bug's status (open/triaged/in_progress/ready_for_retest/resolved/closed)
+- `/awolve-signum:bug-comments` — List comments on a bug
+- `/awolve-signum:bug-comment` — Add a comment to a bug (attach commit SHA, version, rollout notes)
+- `/awolve-signum:edit-bug-comment` — Edit a bug comment. Author or any internal user; audited (`bug_comment.update`).
+- `/awolve-signum:delete-bug-comment` — Delete a bug comment. Author or any internal user; hard delete with audit excerpt.
+- `/awolve-signum:tags` — List a project's tags with usage counts
+- `/awolve-signum:tag-create` — Create a tag; refuses when a similar one exists, `--force` overrides
+- `/awolve-signum:tag-update` — Rename, recolour, or re-describe a tag (assignments are kept)
+- `/awolve-signum:tag-delete` — Delete a tag; `--force` detaches it from everything first
+- `/awolve-signum:edit-comment` — Edit a spec-doc comment. Author only; audited (`comment.update`).
+- `/awolve-signum:delete-comment` — Delete a spec-doc comment. Author only; hard delete with audit excerpt.
+
+## specs-cli.py reference
+
+Most slash commands wrap `${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py`. When a slash command does not exist for what you need, call the CLI directly — don't grep the script source and don't reach for the raw HTTP API. Run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py --help` to confirm.
+
+Full subcommand surface:
+
+| Subcommand | Purpose |
+|------------|---------|
+| `pull [project-id] [--prune\|--keep] [--force-full]` | Pull latest specs |
+| `push <file-path>` | Push a single spec file |
+| `conflicts [project-id] [--json]` | List sync conflicts staged out-of-tree (per-machine cache) |
+| `conflict show\|diff <doc>` | Inspect a staged conflict (`<doc>` = doc_id or local path) |
+| `conflict resolve <doc> --theirs\|--mine\|--merged <file>` | Resolve a conflict: take remote, push local, or push a merged file |
+| `cleanup-synced-tree [--dry-run] [--include-venv]` | Purge legacy in-tree sync/build artifacts (`.remote`, conflict copies, `.specs-trash/`, `_gen/.venv/`) |
+| `status` | Show sync status of local spec files |
+| `log <project-id\|--all> [--since DUR] [--json] [--since-last-visit] [--mark-read]` | Audit log stream |
+| `set-status <id> <status>` | Change feature or document status |
+| `set-description <feature-id> <text>` | Set or clear feature shortDescription |
+| `set-title <feature-id> <text>` | Update a feature's display title without renaming the slug (separate from `rename-feature` which changes both name + title in one call) |
+| `create-feature <project-id> <name> [--status] [--description]` | Create feature (service auto-assigns the number — do NOT include a numeric prefix in `<name>`) |
+| `create-doc <project-id> <feature-name> <filename>` | Add a document to a feature |
+| `rename-feature <project-id> <old> <new>` | Rename feature folder + service |
+| `rename-doc <file-path> <new-filename>` | Rename a document. Refuses (exit 1) when another file in the folder carries the same `spec_doc_id` — a sync conflict copy; `rm` the stray file instead. |
+| `delete-doc <file-path>` | Delete a document. Same duplicate-id refusal as `rename-doc`: acting on the id would delete the original, not the copy. |
+| `delete-feature <project-id> <feature-name>` | Delete a feature and its docs |
+| `list-features <project-id>` | List all features in a project |
+| `list-docs <project-id> <feature-name>` | List all docs in a feature |
+| `bugs [project-id] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
+| `view-bug <project-id> <bug-number> [--json]` | Full bug details |
+| `bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]` | Report a bug |
+| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Edit a bug's title, description, severity, or assignee. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
+| `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/ready_for_retest/resolved/closed) |
+| `bug-comments <project-id> <bug-number> [--json]` | List the comment thread on a bug (oldest-first). Comment UUIDs shown in brackets so they can be passed to edit/delete commands. |
+| `bug-comment <project-id> <bug-number> <body>` | Add a comment to a bug |
+| `edit-bug-comment <project-id> <bug-number> <comment-id> <body>` | Edit a bug comment (author or internal user). Audited. |
+| `delete-bug-comment <project-id> <bug-number> <comment-id>` | Delete a bug comment (author or internal user). Hard delete, audited. Confirm with user before calling — visible. |
+| `edit-comment <comment-id> <body>` | Edit a spec-doc comment (author only). Audited (`comment.update`). |
+| `delete-comment <comment-id>` | Delete a spec-doc comment (author only). Hard delete, audited. Confirm with user before calling — visible. |
+| `comments <file-path>` / `comment <file-path> <body> [--inline --anchor <text>]` | Read / add comments |
+| `resolve-comment <comment-id>` | Resolve a comment |
+| `reviews <file-path>` / `review <file-path> <verdict> [body]` | Read / submit reviews |
+| `versions <file-path>` / `save <file-path> <summary>` | Version history / snapshot |
+| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` and `--tag` force flat view, otherwise a matching child would vanish whenever its epic didn't match too. `--tag` is repeatable and OR-ed. |
+| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL] [--tags a,b]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
+| `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Reparent an item (or pass `none` to detach). Errors include `parent_not_an_epic`, `parent_must_be_top_level`, `epic_has_children`, `child_cannot_be_epic`. |
+| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). |
+| `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If the item is an epic, the server cascades to all active children in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
+| `tags <project-id> [--json]` | List a project's tags with usage counts (backlog / bugs). Read this before coining a new one. |
+| `tag-create <project-id> <name> [--color C] [--description D] [--force]` | Create a tag. Exits 2 and lists close matches when a similar tag already exists — reuse one of those unless the user confirms otherwise; `--force` creates anyway. An exact match is a no-op, not an error. |
+| `tag-update <project-id> <tag> [--name N] [--color C] [--description D] [--force]` | Rename/recolour/re-describe. Everything already tagged keeps it. `tag_slug_taken` when the new name exists; there is no merge. |
+| `tag-delete <project-id> <tag> [--force]` | Delete a tag. In use ⇒ refuses with the count; `--force` detaches from every item. Confirm with the user first — no undo. |
+| `service-status` | Health check |
+| `attach <file-path> [<project-id>/<feature-name>]` | Upload binary attachment |
+
+Service base URL lives in `~/.claude-specs/config.yaml` (`service_url`). The portal UI is `<service_url>/portal/<project>/...` — useful for linking a user to a resource.
+
+### Conventions when calling the CLI directly
+
+- Pass `--json` where available (`comments`, `reviews`, `versions`, `log`, `view-bug`, `bug-comments`) when you need to parse output.
+- Never pass a numeric prefix to `create-feature <name>` — the service rejects it with HTTP 500 and auto-numbers the feature anyway.
+- Feature identifiers in URLs and subcommand arguments are the folder name (e.g. `030-terminal-resume-session`), not the UUID.
+
+### Backlog hierarchy (epics)
+
+Backlog items can be organized into one level of nesting: an **epic** (`isEpic: true`, top-level only) holds zero or more **child items** (regular items with `parentId` pointing at the epic). Epics are opt-in and explicit — created via `--epic` on `backlog-add` or via the portal modal. Empty epics are valid placeholders. Children can only be nested under explicit epics (not arbitrary top-level items).
+
+When the user asks you to add **multiple related items** in one go (e.g. "add tasks for the onboarding flow"), prefer creating an epic first via `backlog-add … --epic` and then adding the rest with `--parent <epic-#N>`. This gives them a tidy tree view in the portal Backlog tab. For one-off items, leave them top-level.
+
+### Tags
+
+Tags are free-form labels on backlog items and bugs. **One vocabulary per project**, shared by both — a `regression` tag means the same thing wherever it appears in that project, and no other project sees it.
+
+Two rules govern them, and they pull in opposite directions on purpose:
+
+- **Applying a tag is cheap.** It needs only whatever lets you edit the item, so a bug reporter can label their own report.
+- **Coining one is not.** Creating, renaming, and deleting tags needs the developer or admin role, and `tag-create` refuses (exit code 2) when something close already exists, listing the near-matches instead.
+
+When you hit that refusal, **stop and show the user the suggestions** rather than re-running with `--force`. Reusing the existing tag is nearly always right; a vocabulary that has both `frontend` and `front-end` filters worse than one that has neither. `--force` is for the case where the near-match genuinely means something else.
+
+Tag identity is the slug — lowercase, punctuation and spaces folded to hyphens — so `Needs UX`, `needs-ux` and `needs_ux` are one tag. Names accept slugs or display forms interchangeably everywhere: `--tag "Needs UX"` and `--tag needs-ux` are the same filter.
+
+Applying a tag that does not exist fails with `tag_not_found` and close matches, rather than silently creating it. Run `tags <project-id>` first when you are unsure what the project already uses.
+
+## Important: Always pull before reading specs
+
+**Before reading or working with spec files, always run `/awolve-signum:pull` first** to ensure you have the latest versions. The SessionStart hook handles this for new sessions, but mid-session you must pull manually.
+
+Do not assume local spec files are current — pull first, then read.
+
+## How it works
+
+Spec files are synced from Signum. Each synced file has YAML frontmatter with `spec_version`, `spec_doc_id`, and `last_synced`. On session start, latest specs are pulled. When you edit a spec file, it is automatically pushed.
+
+## Configuration
+
+**IMPORTANT:** There are two config files with different purposes:
+
+| File | Purpose | Committed to git? |
+|------|---------|-------------------|
+| `.claude/specs.md` | Shared project config — same for all team members | Yes |
+| `.claude/specs.local.md` | Personal override — machine-specific paths | No (.gitignore) |
+
+**Resolution order:** `specs.local.md` takes priority over `specs.md`. If `specs.local.md` exists, `specs.md` is ignored entirely.
+
+### When to use which
+
+**Use `.claude/specs.md` (committed) when:**
+- Setting up a project repo — all devs share the same config
+- The paths are the same for everyone (e.g. `./specs`)
+- You want new team members to have config automatically after cloning
+
+**Use `.claude/specs.local.md` (personal) when:**
+- Paths are machine-specific (e.g. pointing to shared file storage)
+- You need to override the committed config for your setup
+- Testing or temporary config changes
+
+### Config format
+
+```yaml
+---
+service_url: https://specs.awolve.ai
+projects:
+  - id: project-name
+    path: ./specs
+---
+```
+
+Multi-project example:
+
+```yaml
+---
+service_url: https://specs.awolve.ai
+projects:
+  - id: my-service
+    path: path/to/my-service/specs
+  - id: client-project
+    path: path/to/client-project/specs
+---
+```
+
+### Helping users set up config
+
+When a user needs to set up specs config:
+
+1. **Check if `.claude/specs.md` already exists** — if so, it may already work
+2. **For single-project repos:** Create `.claude/specs.md` (committed) with `path: ./specs`
+3. **For multi-project repos:** Create `.claude/specs.md` (committed) with appropriate paths
+4. **Only create `.claude/specs.local.md`** if the user has a machine-specific path override
+5. **Never create both** unless the user explicitly needs a personal override
+
+Authentication is stored in `~/.claude-specs/auth.json` (per-machine, created by `/awolve-signum:login`).
+
+## Updating the plugin
+
+```
+/plugin marketplace update awolve-open-claude-plugins
+```

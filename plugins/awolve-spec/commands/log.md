@@ -4,7 +4,7 @@ description: Show recent audit activity — "what happened since my last visit" 
 
 # /awolve-spec:log
 
-Answer questions about recent activity in the spec service using the audit log.
+Answer questions about recent activity in Signum using the audit log.
 
 ## When to use
 

@@ -5,7 +5,7 @@ argument-hint: [file-path] [new-filename]
 
 # /awolve-spec:rename-doc
 
-Rename a spec document file and update the spec service record.
+Rename a spec document file and update the Signum record.
 
 ## Instructions
 
@@ -19,4 +19,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py rename-doc <file-path> <new-f
 
 The `spec_doc_id` is preserved — only the filename changes in both the filesystem and the service.
 
-**Note:** This requires the document rename endpoint on the spec service. If it returns an error, the endpoint may not be deployed yet.
+**Note:** This requires the document rename endpoint on Signum. If it returns an error, the endpoint may not be deployed yet.

@@ -5,7 +5,7 @@ argument-hint: [project-id] [feature-name] [filename]
 
 # /awolve-spec:create-doc
 
-Add a new document to an existing feature, registered in the spec service with sync frontmatter.
+Add a new document to an existing feature, registered in Signum with sync frontmatter.
 
 ## Instructions
 

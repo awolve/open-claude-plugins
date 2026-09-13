@@ -84,7 +84,7 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/requirements.md`:
 
 ### 4. Register and push
 
-If this is a new feature (folder didn't exist before), register it in the spec service:
+If this is a new feature (folder didn't exist before), register it in Signum:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py create-feature <project-id> <feature-name>
@@ -111,4 +111,4 @@ Requirements written: {path to requirements.md}
 Next step: get this reviewed on the spec portal. Once approved, run `/awolve-spec:design` to write the design.
 ```
 
-Do NOT proceed to write design.md or plan.md. The spec service gates progression between phases.
+Do NOT proceed to write design.md or plan.md. Signum gates progression between phases.

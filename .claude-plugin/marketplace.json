@@ -1,6 +1,6 @@
 {
   "name": "awolve-open-claude-plugins",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Awolve open-source Claude Code plugins",
   "owner": {
     "name": "Awolve",
@@ -8,8 +8,14 @@
   },
   "plugins": [
     {
+      "name": "awolve-signum",
+      "description": "Spec-driven development — create, sync, and manage spec documents with Awolve Signum",
+      "source": "./plugins/awolve-signum",
+      "category": "development"
+    },
+    {
       "name": "awolve-spec",
-      "description": "Spec-driven development — create, sync, and manage spec documents with the Awolve Spec Service",
+      "description": "Former name of awolve-signum, kept so existing installs keep working. Install awolve-signum instead.",
       "source": "./plugins/awolve-spec",
       "category": "development"
     }

@@ -1,0 +1,11 @@
+{
+  "name": "awolve-signum",
+  "version": "0.49.0",
+  "description": "Spec-driven development — create, sync, and manage spec documents with Awolve Signum",
+  "author": {
+    "name": "Awolve",
+    "url": "https://awolve.ai"
+  },
+  "commands": "./commands/",
+  "skills": "./skills/"
+}

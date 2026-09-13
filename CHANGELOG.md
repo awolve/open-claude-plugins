@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.49.0 — 2026-09-13
+
+- **The plugin is now `awolve-signum`.** The spec service is renamed Awolve Signum and the plugin is published under the new name: `/plugin install awolve-signum@awolve-open-claude-plugins`, with commands under `/awolve-signum:`. Login and `.claude/specs.md` are shared, so switching needs no new setup.
+- **`awolve-spec` keeps working.** It stays in the marketplace as a generated copy with the same commands and version. When both are enabled, its sync hooks do nothing, so each spec edit is pushed once, by `awolve-signum`.
+- Hooks call `specs-cli.py hook session-start` and `hook post-tool-use`. The `pull --quiet` and `post-tool-use` commands still work.
+- Product wording in commands, help and messages says Signum. The service address is still specs.awolve.ai.
+
 ## 0.48.0 — 2026-09-10 — Björn Allvin
 
 - **`my-daily` and `my-weekly`** (spec-service spec 041). Two commands that print the same lists as the assignment notification mails, built by the same service code: `my-daily` shows what someone else assigned to you since 07:00 on the previous weekday (`--since` for another window, `--kind bug|backlog`), and `my-weekly` shows everything open assigned to you, sorted like the weekly mail "My current things in spec service". Both span every project you can open, not only the ones in your specs config, and both take `--json`. Needs spec-service 0.127.0.

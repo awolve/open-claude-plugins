@@ -1,11 +1,11 @@
 ---
-description: Authenticate with the Awolve Spec Service
+description: Authenticate with Awolve Signum
 allowed-tools: [AskUserQuestion]
 ---
 
 # /awolve-spec:login
 
-Authenticate with the Awolve Spec Service so specs can be synced.
+Authenticate with Awolve Signum so specs can be synced.
 
 ## Instructions
 
@@ -13,7 +13,7 @@ Your ONLY job is to ask the user which auth method they want. Do NOT run any com
 
 Use AskUserQuestion to ask:
 
-> How do you want to authenticate with the spec service?
+> How do you want to authenticate with Signum?
 >
 > 1. **Azure CLI** — for Awolve team members (uses `az login`)
 > 2. **API key** — for external collaborators (key from the portal)

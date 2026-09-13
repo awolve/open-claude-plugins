@@ -21,8 +21,8 @@ The command prints the new user's id and the next step. A feedback user starts w
 ## What to tell the user
 
 - The key goes in the app's **backend** secret store (Key Vault, environment). Never in page JavaScript — anything the browser sends, anyone with devtools can copy.
-- The app forwards reporter name and email from its own session when it has one; anonymous reports are fine. The spec service shows those fields as free text and never links them to a portal account.
+- The app forwards reporter name and email from its own session when it has one; anonymous reports are fine. Signum shows those fields as free text and never links them to a portal account.
 - Two feedback users on one project (production and staging) are normal: separate keys, separate limits.
-- The host-app side of the contract — the proxy endpoint, the payload, the errors — is documented with the spec service (at Awolve: `operations/tools/spec-service/shared/feedback-contract.md`).
+- The host-app side of the contract — the proxy endpoint, the payload, the errors — is documented with Signum (at Awolve: `operations/tools/spec-service/shared/feedback-contract.md`).
 
 Requires project admin access.

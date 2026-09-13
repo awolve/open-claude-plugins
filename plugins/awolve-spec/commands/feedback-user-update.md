@@ -28,6 +28,6 @@ The command prints the user as it now stands.
 
 - A launch day: raise the limits for the day, put them back after.
 - A key that may have leaked but cannot be rotated this minute: tighten the origin allowlist and drop the limits until you can revoke.
-- Per-user throttling is the host app's job — the spec service only knows the key, not which of the app's users is sending.
+- Per-user throttling is the host app's job — Signum only knows the key, not which of the app's users is sending.
 
 Requires project admin access.

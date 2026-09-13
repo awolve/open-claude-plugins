@@ -1,10 +1,10 @@
 ---
-description: Pull latest spec files from the spec service
+description: Pull latest spec files from Signum
 ---
 
 # /awolve-spec:pull
 
-Pull the latest spec documents from the Awolve Spec Service.
+Pull the latest spec documents from Awolve Signum.
 
 ## Instructions
 

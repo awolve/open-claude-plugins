@@ -5,7 +5,7 @@ description: Spec-driven development — create, sync, and manage spec documents
 
 # Specs Plugin
 
-Spec-driven development workflow and sync with the Awolve Spec Service (specs.awolve.ai).
+Spec-driven development workflow and sync with Awolve Signum (specs.awolve.ai).
 
 ## Spec-driven development
 
@@ -60,7 +60,7 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 ### Commands — sync and management
 
 - `/awolve-spec:pull` — Pull latest spec files from the service
-- `/awolve-spec:login` — Authenticate with the spec service
+- `/awolve-spec:login` — Authenticate with Signum
 - `/awolve-spec:status` — Show sync status of local spec files
 - `/awolve-spec:set-status` — Change feature or document status
 - `/awolve-spec:create-feature` — Create a new feature in a project
@@ -182,7 +182,7 @@ Do not assume local spec files are current — pull first, then read.
 
 ## How it works
 
-Spec files are synced from the spec service. Each synced file has YAML frontmatter with `spec_version`, `spec_doc_id`, and `last_synced`. On session start, latest specs are pulled. When you edit a spec file, it is automatically pushed.
+Spec files are synced from Signum. Each synced file has YAML frontmatter with `spec_version`, `spec_doc_id`, and `last_synced`. On session start, latest specs are pulled. When you edit a spec file, it is automatically pushed.
 
 ## Configuration
 

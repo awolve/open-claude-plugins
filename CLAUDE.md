@@ -12,4 +12,5 @@ Because the repo is public: no secrets, no client names beyond what's already pu
 
 - Plugin version lives in `plugins/<plugin>/.claude-plugin/plugin.json`; bump it with every change (patch for docs/wording, minor for behavior).
 - Add a `CHANGELOG.md` entry at repo root (newest first, `## <version> — <date>`); commit subjects end with `— <version>`.
-- Users update via `/awolve-spec:update-plugins` (or `/plugin marketplace update awolve-open-claude-plugins`) — changes reach externals too, on their own schedule.
+- **Edit `plugins/awolve-signum` only.** `plugins/awolve-spec` is a generated copy under the plugin's former name, so existing installs keep working. After every change run `python3 scripts/generate-legacy-plugin.py` and commit both; `--check` exits 1 when the copy is stale. The copy takes its version from the source, so bump only `plugins/awolve-signum/.claude-plugin/plugin.json`.
+- Users update via `/awolve-signum:update-plugins` (`/awolve-spec:update-plugins` and `/plugin marketplace update awolve-open-claude-plugins` also work) — changes reach externals too, on their own schedule.

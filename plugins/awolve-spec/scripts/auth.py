@@ -1,5 +1,5 @@
 """
-Authentication for the Awolve Spec Service.
+Authentication for Awolve Signum.
 
 Supports two auth methods:
 1. Azure CLI (Awolve users) — auto-refreshes token on each request, never expires
@@ -136,7 +136,7 @@ def get_headers():
 
 
 def _verify_token(token, service_url):
-    """Verify a token works against the spec service. Returns True if valid."""
+    """Verify a token works against Signum. Returns True if valid."""
     import urllib.request
     import urllib.error
     try:
@@ -164,11 +164,11 @@ def login_azure(service_url=None):
 
     url = service_url or _read_auth().get("service_url", "https://specs.awolve.ai")
 
-    # Verify the token works against our spec service
+    # Verify the token works against Signum
     if not _verify_token(token, url):
         email = _get_azure_email() or "unknown"
         print(f"specs: Azure CLI token ({email}, env: {env_name}) was rejected by {url}", file=sys.stderr)
-        print(f"specs: your Azure account may not have access to this spec service", file=sys.stderr)
+        print(f"specs: your Azure account may not have access to this Signum instance", file=sys.stderr)
         print(f"specs: use an API key instead: /awolve-spec:login with --api-key", file=sys.stderr)
         return False
 

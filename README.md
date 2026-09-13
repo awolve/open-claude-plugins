@@ -1,6 +1,6 @@
-# Awolve Spec Plugin
+# Awolve Signum Plugin
 
-Claude Code plugin for spec-driven development with the [Awolve Spec Service](https://specs.awolve.ai).
+Claude Code plugin for spec-driven development with [Awolve Signum](https://specs.awolve.ai).
 
 ## What it does
 
@@ -14,9 +14,17 @@ Run these as slash commands inside Claude Code:
 
 ```
 /plugin marketplace add awolve/open-claude-plugins
-/plugin install awolve-spec@awolve-open-claude-plugins
+/plugin install awolve-signum@awolve-open-claude-plugins
 /reload-plugins
 ```
+
+## Moving from awolve-spec
+
+`awolve-signum` is the same plugin under its new name. `awolve-spec` stays in the marketplace so existing installs keep working.
+
+- Install `awolve-signum` as above and reload. Login and `.claude/specs.md` are shared, so there is nothing to set up again.
+- With both enabled, `awolve-spec`'s sync hooks do nothing, so each spec edit is pushed once. Its commands keep working under `/awolve-spec:` until you remove it.
+- `awolve-spec` will be retired later. Until then, nothing changes for installs that keep it.
 
 ## Update
 
@@ -26,7 +34,7 @@ Run these as slash commands inside Claude Code:
 
 ## Setup
 
-1. **Login** — run `/awolve-spec:login` in Claude Code (Azure CLI or API key)
+1. **Login** — run `/awolve-signum:login` in Claude Code (Azure CLI or API key)
 2. **Configure project** — create `.claude/specs.md` (shared) or `.claude/specs.local.md` (personal override):
 
 ```yaml
@@ -42,61 +50,61 @@ projects:
 
 ## Commands
 
-Run `/awolve-spec:help` for the full list, or see below:
+Run `/awolve-signum:help` for the full list, or see below:
 
 ### Setup & Sync
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:login` | Authenticate (Azure CLI or API key) |
-| `/awolve-spec:status` | Show sync status and auth info |
-| `/awolve-spec:pull` | Pull latest spec files |
+| `/awolve-signum:login` | Authenticate (Azure CLI or API key) |
+| `/awolve-signum:status` | Show sync status and auth info |
+| `/awolve-signum:pull` | Pull latest spec files |
 
 ### Spec Writing
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:req` | Write requirements.md — what to build and why |
-| `/awolve-spec:design` | Write design.md — how to build it |
-| `/awolve-spec:plan` | Write plan.md — implementation approach and task breakdown |
-| `/awolve-spec:infra` | Enrich design.md with infrastructure specifications |
-| `/awolve-spec:retro` | Document work after the fact from what was built |
+| `/awolve-signum:req` | Write requirements.md — what to build and why |
+| `/awolve-signum:design` | Write design.md — how to build it |
+| `/awolve-signum:plan` | Write plan.md — implementation approach and task breakdown |
+| `/awolve-signum:infra` | Enrich design.md with infrastructure specifications |
+| `/awolve-signum:retro` | Document work after the fact from what was built |
 
 ### Features & Documents
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:list-features` | List all features in a project |
-| `/awolve-spec:create-feature` | Create a new feature |
-| `/awolve-spec:rename-feature` | Rename a feature |
-| `/awolve-spec:delete-feature` | Delete a feature and all its documents |
-| `/awolve-spec:create-doc` | Add a document to an existing feature |
-| `/awolve-spec:rename-doc` | Rename a document |
-| `/awolve-spec:delete-doc` | Delete a document |
-| `/awolve-spec:set-status` | Change feature or document status |
+| `/awolve-signum:list-features` | List all features in a project |
+| `/awolve-signum:create-feature` | Create a new feature |
+| `/awolve-signum:rename-feature` | Rename a feature |
+| `/awolve-signum:delete-feature` | Delete a feature and all its documents |
+| `/awolve-signum:create-doc` | Add a document to an existing feature |
+| `/awolve-signum:rename-doc` | Rename a document |
+| `/awolve-signum:delete-doc` | Delete a document |
+| `/awolve-signum:set-status` | Change feature or document status |
 
 ### Backlog & Bugs
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:backlog` | List backlog items |
-| `/awolve-spec:backlog-add` | Add a new idea or feature request |
-| `/awolve-spec:bugs` | List open bugs |
-| `/awolve-spec:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
-| `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
-| `/awolve-spec:bug` | Report a new bug |
-| `/awolve-spec:edit-backlog-comment` | Edit your own comment on a backlog item |
-| `/awolve-spec:edit-bug-comment` | Edit your own comment on a bug |
-| `/awolve-spec:tags` | List a project's tags and how many items use each |
-| `/awolve-spec:tag-create` | Create a tag (warns when a similar one exists) |
+| `/awolve-signum:backlog` | List backlog items |
+| `/awolve-signum:backlog-add` | Add a new idea or feature request |
+| `/awolve-signum:bugs` | List open bugs |
+| `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
+| `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
+| `/awolve-signum:bug` | Report a new bug |
+| `/awolve-signum:edit-backlog-comment` | Edit your own comment on a backlog item |
+| `/awolve-signum:edit-bug-comment` | Edit your own comment on a bug |
+| `/awolve-signum:tags` | List a project's tags and how many items use each |
+| `/awolve-signum:tag-create` | Create a tag (warns when a similar one exists) |
 
 ### Feedback users
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:feedback-users` | List a project's feedback users (write-only credentials for in-app feedback widgets) |
-| `/awolve-spec:feedback-user-create` | Create one; `feedback-user-update` / `feedback-user-delete` manage it |
-| `/awolve-spec:feedback-key-create` | Mint its key, shown once; `feedback-key-revoke` is the kill switch |
+| `/awolve-signum:feedback-users` | List a project's feedback users (write-only credentials for in-app feedback widgets) |
+| `/awolve-signum:feedback-user-create` | Create one; `feedback-user-update` / `feedback-user-delete` manage it |
+| `/awolve-signum:feedback-key-create` | Mint its key, shown once; `feedback-key-revoke` is the kill switch |
 
 ## How it works
 

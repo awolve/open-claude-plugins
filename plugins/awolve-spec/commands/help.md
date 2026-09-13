@@ -13,7 +13,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 ### Setup & Sync
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:login` | Authenticate with the spec service (Azure CLI or API key) |
+| `/awolve-spec:login` | Authenticate with Signum (Azure CLI or API key) |
 | `/awolve-spec:status` | Show sync status and authentication info |
 | `/awolve-spec:pull` | Pull latest spec files from the service |
 | `/awolve-spec:conflicts` | List spec-sync conflicts staged out-of-tree (per-machine cache) |

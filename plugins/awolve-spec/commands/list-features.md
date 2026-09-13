@@ -5,7 +5,7 @@ argument-hint: [project-id]
 
 # /awolve-spec:list-features
 
-List all features in a project from the spec service.
+List all features in a project from Signum.
 
 ## Instructions
 

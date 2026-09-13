@@ -5,7 +5,7 @@ argument-hint: [project-id] [old-name] [new-name]
 
 # /awolve-spec:rename-feature
 
-Rename a feature folder and update the spec service record.
+Rename a feature folder and update the Signum record.
 
 ## Instructions
 
@@ -20,4 +20,4 @@ The number prefix is preserved — only the name part changes (e.g. `003-old-nam
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py rename-feature <project-id> <old-name> <new-name>
 ```
 
-**Note:** This requires the rename endpoint on the spec service. If it returns an error, the endpoint may not be deployed yet.
+**Note:** This requires the rename endpoint on Signum. If it returns an error, the endpoint may not be deployed yet.
