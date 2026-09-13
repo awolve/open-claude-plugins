@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.3 — 2026-09-13
+
+- `feedback-user-create`: the host-app contract path points at `operations/tools/signum/` in Cortex, where the Signum folder now lives.
+
 ## 0.49.2 — 2026-09-13
 
 - The spec skill's heading reads "Specs in Awolve Signum" and the plugin's contributor notes are headed "Awolve Signum Plugin", both instead of "Specs Plugin". The skill keeps its name, `awolve-signum:spec`: a spec is the document it covers, not the old product name. No behaviour change.
