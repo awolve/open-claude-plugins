@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "awolve-signum",
-      "description": "Spec-driven development — create, sync, and manage spec documents with Awolve Signum",
+      "description": "Work with Awolve Signum from Claude Code — write and sync specs, and manage backlog, bugs and assignments.",
       "source": "./plugins/awolve-signum",
       "category": "development"
     },

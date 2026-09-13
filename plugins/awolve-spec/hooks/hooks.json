@@ -1,5 +1,5 @@
 {
-  "description": "Specs plugin — sync spec files with Awolve Signum",
+  "description": "Awolve Signum — keep spec files in sync with the service",
   "hooks": {
     "SessionStart": [
       {

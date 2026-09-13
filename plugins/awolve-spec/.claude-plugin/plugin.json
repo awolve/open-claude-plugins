@@ -1,6 +1,6 @@
 {
   "name": "awolve-spec",
-  "version": "0.49.0",
+  "version": "0.49.1",
   "description": "Former name of awolve-signum, kept so existing installs keep working. Install awolve-signum instead; with both enabled, this copy's sync hooks stand down.",
   "author": {
     "name": "Awolve",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.49.1 — 2026-09-13
+
+- **awolve-signum describes what it does.** The plugin and marketplace description said only "create, sync, and manage spec documents"; it now reads "Work with Awolve Signum from Claude Code — write and sync specs, and manage backlog, bugs and assignments." No behaviour change.
+
 ## 0.49.0 — 2026-09-13
 
 - **The plugin is now `awolve-signum`.** The spec service is renamed Awolve Signum and the plugin is published under the new name: `/plugin install awolve-signum@awolve-open-claude-plugins`, with commands under `/awolve-signum:`. Login and `.claude/specs.md` are shared, so switching needs no new setup.
