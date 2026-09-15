@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.51.0 — 2026-09-15 — Björn Allvin
+
+- **CLI output says `Signum:`.** Every message the CLI prints, on stdout and stderr, starts with `Signum:` instead of `specs:`. For example: `Signum: created feature '<id>'`, `Signum: bug #<n> created — <title>`, `Signum: created backlog item '<title>' in '<project>' (priority: <p>)`. The words after the prefix are unchanged, so "feature" and "spec" still name what they always named. Only the prefix changed.
+- **If a script or hook matches `specs:` in this output, update it to accept `Signum:`.** Accept both while people run different plugin versions.
+
 ## 0.50.0 — 2026-09-15 — Björn Allvin
 
 - **`backlog-add` prints the new item's portal link.** A second line, `  portal: <service_url>/portal/<project>/backlog/<number>`, follows the `created` line, the way `create-feature` and `bug` already link to what they made. Epics get the same line. The link uses the item number from the create response; if the response has no number, no link is printed.

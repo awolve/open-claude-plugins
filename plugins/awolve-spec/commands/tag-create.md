@@ -23,7 +23,7 @@ Colours: `slate`, `blue`, `teal`, `green`, `amber`, `orange`, `red`, `pink`, `vi
 If something close already exists, the command **creates nothing** and exits with status 2:
 
 ```
-specs: not creating 'Frontend Work' — a similar tag already exists
+Signum: not creating 'Frontend Work' — a similar tag already exists
   similar tags already exist:
     #frontend  (same words)
   reuse one of those, or repeat with --force to create it anyway

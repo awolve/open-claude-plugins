@@ -17,7 +17,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py tag-delete <project-id> <tag>
 A tag nothing uses deletes immediately. A tag **in use** refuses and tells you how many items carry it:
 
 ```
-specs: 'Billing' is applied to 14 item(s) — repeat with force to remove it from all of them
+Signum: 'Billing' is applied to 14 item(s) — repeat with force to remove it from all of them
 ```
 
 Show that count to the user and get an explicit go-ahead before re-running with `--force`. There is no undo: the tag comes off all fourteen items in one transaction, and re-creating the tag afterwards does not put it back.

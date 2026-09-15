@@ -19,7 +19,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py tags <project-id> [--json]
 Each row shows the tag, its colour, and how many items carry it, split between backlog and bugs. Tags are ordered by usage, so the ones that actually classify anything come first:
 
 ```
-specs: 4 tag(s) in 'spec-service'
+Signum: 4 tag(s) in 'spec-service'
 
   #regression   red     3 backlog · 11 bug(s)
   #billing      amber   6 backlog · 1 bug(s)

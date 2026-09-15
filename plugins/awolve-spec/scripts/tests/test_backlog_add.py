@@ -32,14 +32,14 @@ class BacklogAddOutputTest(unittest.TestCase):
     def test_prints_portal_link_by_number(self):
         lines, _ = self._run({"id": "b1f0c2d4-uuid", "number": 42, "title": "Improve onboarding", "priority": "high"})
         self.assertEqual(lines, [
-            "specs: created backlog item 'Improve onboarding' in 'my-project' (priority: high)",
+            "Signum: created backlog item 'Improve onboarding' in 'my-project' (priority: high)",
             f"  portal: {SERVICE_URL}/portal/my-project/backlog/42",
         ])
 
     def test_epic_gets_the_same_link(self):
         lines, api = self._run({"id": "e-uuid", "number": 7, "title": "Improve onboarding", "priority": "high", "isEpic": True}, is_epic=True)
         self.assertEqual(lines, [
-            "specs: created epic 'Improve onboarding' in 'my-project' (priority: high)",
+            "Signum: created epic 'Improve onboarding' in 'my-project' (priority: high)",
             f"  portal: {SERVICE_URL}/portal/my-project/backlog/7",
         ])
         self.assertTrue(api.call_args.kwargs["data"]["isEpic"])
@@ -47,7 +47,7 @@ class BacklogAddOutputTest(unittest.TestCase):
     def test_no_number_means_no_link(self):
         lines, _ = self._run({"id": "b1f0c2d4-uuid", "title": "Improve onboarding", "priority": "high"})
         self.assertEqual(lines, [
-            "specs: created backlog item 'Improve onboarding' in 'my-project' (priority: high)",
+            "Signum: created backlog item 'Improve onboarding' in 'my-project' (priority: high)",
         ])
 
 

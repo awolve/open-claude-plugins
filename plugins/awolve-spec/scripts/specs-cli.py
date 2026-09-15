@@ -452,12 +452,12 @@ def resolve_doc_id(file_path):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -479,14 +479,14 @@ def resolve_doc_id(file_path):
     # Fall back to API lookup
     proj = config.find_project_for_file(cfg, abs_path)
     if not proj:
-        print(f"specs: {file_path} is not inside any configured specs path", file=sys.stderr)
+        print(f"Signum: {file_path} is not inside any configured specs path", file=sys.stderr)
         sys.exit(1)
 
     # Extract feature name from path: .../specs/{feature-name}/{filename}
     rel = os.path.relpath(abs_path, proj["path"])
     parts = rel.replace("\\", "/").split("/")
     if len(parts) < 2:
-        print(f"specs: cannot determine feature from path {file_path}", file=sys.stderr)
+        print(f"Signum: cannot determine feature from path {file_path}", file=sys.stderr)
         sys.exit(1)
 
     feature_name = parts[0]
@@ -502,11 +502,11 @@ def resolve_doc_id(file_path):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to look up feature — {e}", file=sys.stderr)
+        print(f"Signum: failed to look up feature — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: feature '{feature_id}' not found (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: feature '{feature_id}' not found (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
 
     feature_data = json.loads(body)
@@ -515,7 +515,7 @@ def resolve_doc_id(file_path):
         if doc.get("filename") == filename:
             return cfg, headers, service_url, doc["id"], proj["id"], feature_name, filename
 
-    print(f"specs: document '{filename}' not found in feature '{feature_id}'", file=sys.stderr)
+    print(f"Signum: document '{filename}' not found in feature '{feature_id}'", file=sys.stderr)
     sys.exit(1)
 
 
@@ -523,11 +523,11 @@ def _init_and_auth():
     """Common init: read config, get auth headers. Returns (cfg, headers, service_url)."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     return cfg, headers, cfg["service_url"]
 
@@ -546,11 +546,11 @@ def list_comments(file_path, as_json=False):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to fetch comments — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch comments — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to fetch comments (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to fetch comments (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     comments = json.loads(body)
@@ -563,7 +563,7 @@ def list_comments(file_path, as_json=False):
     resolved = [c for c in comments if c.get("resolved")]
 
     if not comments:
-        print("specs: no comments")
+        print("Signum: no comments")
         return
 
     if unresolved:
@@ -610,14 +610,14 @@ def add_comment(file_path, body, inline=False, anchor_text=None):
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to add comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to add comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to add comment (HTTP {status_code}): {resp}", file=sys.stderr)
+        print(f"Signum: failed to add comment (HTTP {status_code}): {resp}", file=sys.stderr)
         sys.exit(1)
 
-    print("specs: comment added")
+    print("Signum: comment added")
 
 
 def resolve_comment(comment_id):
@@ -632,20 +632,20 @@ def resolve_comment(comment_id):
             data={"resolved": True},
         )
     except ConnectionError as e:
-        print(f"specs: failed to resolve comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to resolve comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to resolve comment (HTTP {status_code}): {resp}", file=sys.stderr)
+        print(f"Signum: failed to resolve comment (HTTP {status_code}): {resp}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} resolved")
+    print(f"Signum: comment {comment_id} resolved")
 
 
 def edit_comment(comment_id, body_text):
     """Edit the body of a spec-doc comment. Author-only on the server."""
     if not body_text or not body_text.strip():
-        print("specs: comment body is required", file=sys.stderr)
+        print("Signum: comment body is required", file=sys.stderr)
         sys.exit(1)
 
     _, headers, service_url = _init_and_auth()
@@ -658,21 +658,21 @@ def edit_comment(comment_id, body_text):
             data={"body": body_text},
         )
     except ConnectionError as e:
-        print(f"specs: failed to edit comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to edit comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 403:
-        print(f"specs: only the author can edit comment {comment_id}", file=sys.stderr)
+        print(f"Signum: only the author can edit comment {comment_id}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         try:
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} edited")
+    print(f"Signum: comment {comment_id} edited")
 
 
 def delete_comment(comment_id):
@@ -686,24 +686,24 @@ def delete_comment(comment_id):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to delete comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 403:
-        print(f"specs: only the author can delete comment {comment_id}", file=sys.stderr)
+        print(f"Signum: only the author can delete comment {comment_id}", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print(f"specs: comment {comment_id} not found", file=sys.stderr)
+        print(f"Signum: comment {comment_id} not found", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 204):
         try:
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to delete comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to delete comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} deleted")
+    print(f"Signum: comment {comment_id} deleted")
 
 
 # ---------------------------------------------------------------------------
@@ -720,11 +720,11 @@ def list_reviews(file_path, as_json=False):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to fetch reviews — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch reviews — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to fetch reviews (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to fetch reviews (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     reviews = json.loads(body)
@@ -734,7 +734,7 @@ def list_reviews(file_path, as_json=False):
         return
 
     if not reviews:
-        print("specs: no reviews")
+        print("Signum: no reviews")
         return
 
     for r in reviews:
@@ -755,7 +755,7 @@ def submit_review(file_path, verdict, body=None):
     _, headers, service_url, doc_id, *_ = resolve_doc_id(file_path)
 
     if verdict not in ("approved", "changes_requested"):
-        print(f"specs: verdict must be 'approved' or 'changes_requested', got '{verdict}'", file=sys.stderr)
+        print(f"Signum: verdict must be 'approved' or 'changes_requested', got '{verdict}'", file=sys.stderr)
         sys.exit(1)
 
     payload = {"verdict": verdict}
@@ -770,14 +770,14 @@ def submit_review(file_path, verdict, body=None):
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to submit review — {e}", file=sys.stderr)
+        print(f"Signum: failed to submit review — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to submit review (HTTP {status_code}): {resp}", file=sys.stderr)
+        print(f"Signum: failed to submit review (HTTP {status_code}): {resp}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: review submitted — {verdict}")
+    print(f"Signum: review submitted — {verdict}")
 
 
 # ---------------------------------------------------------------------------
@@ -794,11 +794,11 @@ def list_versions(file_path, as_json=False):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to fetch versions — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch versions — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to fetch versions (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to fetch versions (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     versions = json.loads(body)
@@ -808,7 +808,7 @@ def list_versions(file_path, as_json=False):
         return
 
     if not versions:
-        print("specs: no versions")
+        print("Signum: no versions")
         return
 
     for v in versions:
@@ -832,7 +832,7 @@ def save_version(file_path, summary, source="manual"):
         with open(abs_path, "r", encoding="utf-8") as f:
             content = f.read()
     except (IOError, OSError) as e:
-        print(f"specs: cannot read {file_path} — {e}", file=sys.stderr)
+        print(f"Signum: cannot read {file_path} — {e}", file=sys.stderr)
         sys.exit(1)
 
     _, body = parse_frontmatter(content)
@@ -851,11 +851,11 @@ def save_version(file_path, summary, source="manual"):
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to save version — {e}", file=sys.stderr)
+        print(f"Signum: failed to save version — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to save version (HTTP {status_code}): {resp}", file=sys.stderr)
+        print(f"Signum: failed to save version (HTTP {status_code}): {resp}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -864,7 +864,7 @@ def save_version(file_path, summary, source="manual"):
     except (json.JSONDecodeError, AttributeError):
         version_num = "?"
 
-    print(f"specs: saved version v{version_num} — {summary}")
+    print(f"Signum: saved version v{version_num} — {summary}")
 
 
 # ---------------------------------------------------------------------------
@@ -878,14 +878,14 @@ def service_status():
     try:
         status_code, body = api_request(f"{service_url}/api/status", headers=headers)
     except ConnectionError as e:
-        print(f"specs: service unreachable — {e}", file=sys.stderr)
+        print(f"Signum: service unreachable — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: service returned HTTP {status_code}", file=sys.stderr)
+        print(f"Signum: service returned HTTP {status_code}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: service OK")
+    print(f"Signum: service OK")
     try:
         data = json.loads(body)
         for k, v in data.items():
@@ -981,7 +981,7 @@ def _migrate_in_tree_sidecars(specs_path, project_id, quiet=False):
             except OSError:
                 continue
     if migrated and not quiet:
-        print(f"specs: {project_id} — migrated {migrated} in-tree .remote sidecar(s) to the conflict store")
+        print(f"Signum: {project_id} — migrated {migrated} in-tree .remote sidecar(s) to the conflict store")
     return migrated
 
 
@@ -1029,20 +1029,20 @@ def pull_project(
         status, body = api_request(manifest_url, headers=headers)
     except ConnectionError as e:
         if not quiet:
-            print(f"specs: pull failed for '{project_id}' — {e}", file=sys.stderr)
+            print(f"Signum: pull failed for '{project_id}' — {e}", file=sys.stderr)
         return report
 
     if status == 401:
         if not quiet:
-            print("specs: authentication expired — run /awolve-spec:login", file=sys.stderr)
+            print("Signum: authentication expired — run /awolve-spec:login", file=sys.stderr)
         return report
     if status == 404:
         if not quiet:
-            print(f"specs: project '{project_id}' not found", file=sys.stderr)
+            print(f"Signum: project '{project_id}' not found", file=sys.stderr)
         return report
     if status != 200:
         if not quiet:
-            print(f"specs: manifest failed for '{project_id}' (HTTP {status})", file=sys.stderr)
+            print(f"Signum: manifest failed for '{project_id}' (HTTP {status})", file=sys.stderr)
         return report
 
     manifest = json.loads(body)
@@ -1214,7 +1214,7 @@ def pull_project(
                 content = resp.read()
         except (urllib.error.HTTPError, urllib.error.URLError, ConnectionError) as e:
             if not quiet:
-                print(f"specs: attachment download failed for '{filename}' — {e}", file=sys.stderr)
+                print(f"Signum: attachment download failed for '{filename}' — {e}", file=sys.stderr)
             report["skipped_errors"] += 1
             continue
 
@@ -1223,7 +1223,7 @@ def pull_project(
             report["synced"] += 1
         except OSError as e:
             if not quiet:
-                print(f"specs: failed to write attachment '{local_path}' — {e}", file=sys.stderr)
+                print(f"Signum: failed to write attachment '{local_path}' — {e}", file=sys.stderr)
             report["skipped_errors"] += 1
             continue
 
@@ -1244,7 +1244,7 @@ def pull_project(
                 report["trashed"] += 1
             except OSError as e:
                 if not quiet:
-                    print(f"specs: could not {delete_mode} orphan '{local_path}' — {e}", file=sys.stderr)
+                    print(f"Signum: could not {delete_mode} orphan '{local_path}' — {e}", file=sys.stderr)
 
     # ---- Advance sync cursor + full-sync timestamp ----
     if manifest_cursor:
@@ -1271,13 +1271,13 @@ def pull(project_filter=None, quiet=False, delete_mode="trash", force_full=False
     cfg = config.read_config()
     if not cfg:
         if not quiet:
-            print("specs: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
+            print("Signum: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
         if not quiet:
-            print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+            print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -1287,7 +1287,7 @@ def pull(project_filter=None, quiet=False, delete_mode="trash", force_full=False
     if project_filter:
         projects = [p for p in projects if p["id"] == project_filter]
         if not projects:
-            print(f"specs: project '{project_filter}' not in config", file=sys.stderr)
+            print(f"Signum: project '{project_filter}' not in config", file=sys.stderr)
             sys.exit(1)
 
     # Load the sync state file once; pull_project mutates it per project.
@@ -1327,7 +1327,7 @@ def pull(project_filter=None, quiet=False, delete_mode="trash", force_full=False
             if report["skipped_errors"]:
                 parts.append(f"{report['skipped_errors']} errors")
             if parts:
-                print(f"specs: {proj['id']} — {', '.join(parts)}")
+                print(f"Signum: {proj['id']} — {', '.join(parts)}")
 
     # Persist state after all projects processed so partial failures don't
     # leave a stale cursor (we still advance per-project in pull_project).
@@ -1335,19 +1335,19 @@ def pull(project_filter=None, quiet=False, delete_mode="trash", force_full=False
         state_save(project_root, state)
     except OSError as e:
         if not quiet:
-            print(f"specs: warning — failed to save state: {e}", file=sys.stderr)
+            print(f"Signum: warning — failed to save state: {e}", file=sys.stderr)
 
     if not quiet:
         if total_conflicts:
             print()
-            print(f"specs: {len(total_conflicts)} conflict{'s' if len(total_conflicts) != 1 else ''} — local drift + remote change:", file=sys.stderr)
+            print(f"Signum: {len(total_conflicts)} conflict{'s' if len(total_conflicts) != 1 else ''} — local drift + remote change:", file=sys.stderr)
             for path in total_conflicts:
                 print(f"  {path}", file=sys.stderr)
             print("  The remote side is staged out-of-tree (nothing written beside your files).", file=sys.stderr)
             print("  Inspect with:  specs-cli.py conflicts", file=sys.stderr)
             print("  Resolve with:  specs-cli.py conflict resolve <doc> --theirs|--mine|--merged <file>", file=sys.stderr)
         if total_synced == 0 and total_unchanged == 0 and total_trashed == 0 and not total_conflicts:
-            print(f"specs: pulled {len(projects)} project(s) — no changes")
+            print(f"Signum: pulled {len(projects)} project(s) — no changes")
 
 
 # ---------------------------------------------------------------------------
@@ -1449,23 +1449,23 @@ def specs_log(
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
+        print("Signum: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     # Pick the project list: one specific project, or all configured ones
     if project_id is None:
         projects_to_query = cfg["projects"]
         if not projects_to_query:
-            print("specs: no projects configured", file=sys.stderr)
+            print("Signum: no projects configured", file=sys.stderr)
             sys.exit(1)
     else:
         if not any(p["id"] == project_id for p in cfg["projects"]):
-            print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+            print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
             sys.exit(1)
         projects_to_query = [p for p in cfg["projects"] if p["id"] == project_id]
 
@@ -1515,7 +1515,7 @@ def specs_log(
             continue
 
         if status == 401:
-            print("specs: authentication expired — run /awolve-spec:login", file=sys.stderr)
+            print("Signum: authentication expired — run /awolve-spec:login", file=sys.stderr)
             sys.exit(1)
         if status != 200:
             errors.append(f"{pid}: HTTP {status}")
@@ -1567,15 +1567,15 @@ def specs_log(
         try:
             state_save(project_root, state)
             if project_id is None:
-                print(f"\nspecs: marked {len(per_project_newest)} project(s) read", file=sys.stderr)
+                print(f"\nSignum: marked {len(per_project_newest)} project(s) read", file=sys.stderr)
             else:
-                print(f"\nspecs: marked read up to {per_project_newest[project_id]}", file=sys.stderr)
+                print(f"\nSignum: marked read up to {per_project_newest[project_id]}", file=sys.stderr)
         except OSError as e:
-            print(f"specs: warning — failed to save state: {e}", file=sys.stderr)
+            print(f"Signum: warning — failed to save state: {e}", file=sys.stderr)
 
     # Surface per-project errors at the end so they don't drown out successes
     for err in errors:
-        print(f"specs: log skipped {err}", file=sys.stderr)
+        print(f"Signum: log skipped {err}", file=sys.stderr)
 
 
 def _print_log_events(events, since_last_visit=False, multi_project=False):
@@ -1665,12 +1665,12 @@ def push(file_path, base_version_override=None):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
+        print("Signum: no config found — create .claude/specs.md or .claude/specs.local.md", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -1679,7 +1679,7 @@ def push(file_path, base_version_override=None):
     # Find which project this file belongs to
     proj = config.find_project_for_file(cfg, abs_path)
     if not proj:
-        print(f"specs: {file_path} is not inside any configured specs path", file=sys.stderr)
+        print(f"Signum: {file_path} is not inside any configured specs path", file=sys.stderr)
         sys.exit(1)
 
     # Read file
@@ -1687,7 +1687,7 @@ def push(file_path, base_version_override=None):
         with open(abs_path, "r", encoding="utf-8") as f:
             content = f.read()
     except (IOError, OSError) as e:
-        print(f"specs: cannot read {file_path} — {e}", file=sys.stderr)
+        print(f"Signum: cannot read {file_path} — {e}", file=sys.stderr)
         sys.exit(1)
 
     meta, body = parse_frontmatter(content)
@@ -1695,14 +1695,14 @@ def push(file_path, base_version_override=None):
     base_version = meta.get("spec_version")
 
     if not doc_id:
-        print(f"specs: {file_path} has no spec_doc_id — skipping", file=sys.stderr)
+        print(f"Signum: {file_path} has no spec_doc_id — skipping", file=sys.stderr)
         return False
 
     if base_version_override is not None:
         base_version = base_version_override
 
     if base_version is None:
-        print(f"specs: {file_path} has no spec_version — skipping", file=sys.stderr)
+        print(f"Signum: {file_path} has no spec_version — skipping", file=sys.stderr)
         return False
 
     # Safety: strip any leaked frontmatter from body (e.g. double frontmatter)
@@ -1727,17 +1727,17 @@ def push(file_path, base_version_override=None):
     try:
         status_code, resp_body = api_request(push_url, method="PUT", headers=headers, data=body.strip())
     except ConnectionError as e:
-        print(f"specs: push failed — {e}", file=sys.stderr)
+        print(f"Signum: push failed — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
-        print(f"specs: CONFLICT — remote has newer version. Pull first.", file=sys.stderr)
+        print(f"Signum: CONFLICT — remote has newer version. Pull first.", file=sys.stderr)
         return False
     if status_code == 401:
-        print("specs: authentication expired — run /awolve-spec:login", file=sys.stderr)
+        print("Signum: authentication expired — run /awolve-spec:login", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201, 204):
-        print(f"specs: push failed (HTTP {status_code}): {resp_body}", file=sys.stderr)
+        print(f"Signum: push failed (HTTP {status_code}): {resp_body}", file=sys.stderr)
         sys.exit(1)
 
     # Update local frontmatter
@@ -1757,7 +1757,7 @@ def push(file_path, base_version_override=None):
     atomic_write(abs_path, render_frontmatter(meta, body))
 
     rel = os.path.relpath(abs_path, proj["path"])
-    print(f"specs: pushed {proj['id']}/{rel} (v{new_version})")
+    print(f"Signum: pushed {proj['id']}/{rel} (v{new_version})")
     return True
 
 
@@ -1776,9 +1776,9 @@ def list_conflicts_cmd(project_filter=None, as_json=False):
         print(json.dumps(out, indent=2))
         return
     if not entries:
-        print("specs: no staged conflicts")
+        print("Signum: no staged conflicts")
         return
-    print(f"specs: {len(entries)} staged conflict{'s' if len(entries) != 1 else ''}:")
+    print(f"Signum: {len(entries)} staged conflict{'s' if len(entries) != 1 else ''}:")
     for doc_id, entry in entries:
         local = entry.get("local_path", "?")
         proj = entry.get("project_id", "?")
@@ -1793,11 +1793,11 @@ def _resolve_conflict_ref(ref):
     """Resolve a conflict command arg to (doc_id, entry, remote_text). Exits on miss."""
     doc_id = conflict_store.find_by_ref(ref)
     if not doc_id:
-        print(f"specs: no staged conflict for '{ref}' — run 'specs-cli.py conflicts' to list", file=sys.stderr)
+        print(f"Signum: no staged conflict for '{ref}' — run 'specs-cli.py conflicts' to list", file=sys.stderr)
         sys.exit(1)
     entry, remote_text = conflict_store.get(doc_id)
     if remote_text is None:
-        print(f"specs: staged remote for '{ref}' is missing — re-run 'specs-cli.py pull'", file=sys.stderr)
+        print(f"Signum: staged remote for '{ref}' is missing — re-run 'specs-cli.py pull'", file=sys.stderr)
         sys.exit(1)
     return doc_id, entry, remote_text
 
@@ -1842,7 +1842,7 @@ def conflict_resolve(ref, mode, merged_file=None):
     if mode == "theirs":
         atomic_write(local_path, remote_text)
         conflict_store.clear(doc_id)
-        print(f"specs: resolved {doc_id} with the remote copy ({local_path})")
+        print(f"Signum: resolved {doc_id} with the remote copy ({local_path})")
         return
 
     # --mine / --merged both push the local side. The remote advanced past the
@@ -1851,18 +1851,18 @@ def conflict_resolve(ref, mode, merged_file=None):
     remote_meta, _ = parse_frontmatter(remote_text)
     remote_version = remote_meta.get("spec_version")
     if remote_version is None:
-        print("specs: staged remote has no spec_version — re-run pull", file=sys.stderr)
+        print("Signum: staged remote has no spec_version — re-run pull", file=sys.stderr)
         sys.exit(1)
 
     if mode == "merged":
         if not merged_file:
-            print("specs: --merged requires a file path", file=sys.stderr)
+            print("Signum: --merged requires a file path", file=sys.stderr)
             sys.exit(1)
         try:
             with open(merged_file, "r", encoding="utf-8") as f:
                 merged_content = f.read()
         except (IOError, OSError) as e:
-            print(f"specs: cannot read merged file '{merged_file}' — {e}", file=sys.stderr)
+            print(f"Signum: cannot read merged file '{merged_file}' — {e}", file=sys.stderr)
             sys.exit(1)
         # Write the merged body into the local doc, preserving its identity
         # frontmatter (spec_doc_id), so push() sends the merged content.
@@ -1880,9 +1880,9 @@ def conflict_resolve(ref, mode, merged_file=None):
     ok = push(local_path, base_version_override=remote_version)
     if ok:
         conflict_store.clear(doc_id)
-        print(f"specs: resolved {doc_id} with the local copy")
+        print(f"Signum: resolved {doc_id} with the local copy")
     else:
-        print("specs: remote moved again — run 'specs-cli.py pull' then resolve once more.", file=sys.stderr)
+        print("Signum: remote moved again — run 'specs-cli.py pull' then resolve once more.", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1904,7 +1904,7 @@ def cleanup_synced_tree(dry_run=False, include_venv=False):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     # Roots: every configured specs path; with --include-venv also the wider
@@ -1946,7 +1946,7 @@ def cleanup_synced_tree(dry_run=False, include_venv=False):
     total = len(targets)
     label = "Would remove" if dry_run else "Removed"
     if total == 0:
-        print("specs: synced tree is clean — no artifacts found")
+        print("Signum: synced tree is clean — no artifacts found")
         return
 
     for cat, path, is_dir in targets:
@@ -1957,13 +1957,13 @@ def cleanup_synced_tree(dry_run=False, include_venv=False):
                 else:
                     os.unlink(path)
             except OSError as e:
-                print(f"specs: could not remove {path} — {e}", file=sys.stderr)
+                print(f"Signum: could not remove {path} — {e}", file=sys.stderr)
                 continue
         kind = "dir " if is_dir else "file"
         print(f"  {kind} [{cat}] {path}")
 
     print()
-    print(f"specs: {label} {total} artifact(s) — "
+    print(f"Signum: {label} {total} artifact(s) — "
           f"{counts['remote_sidecar']} .remote, "
           f"{counts['conflict_copy']} conflict copies, "
           f"{counts['artifact_dir']} dirs")
@@ -1982,10 +1982,10 @@ def show_status():
     """Show sync status of all configured projects."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found — create .claude/specs.md or .claude/specs.local.md — create .claude/specs.md (shared) or .claude/specs.local.md (personal)", file=sys.stderr)
+        print("Signum: no config found — create .claude/specs.md or .claude/specs.local.md — create .claude/specs.md (shared) or .claude/specs.local.md (personal)", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: {len(cfg['projects'])} project(s) configured")
+    print(f"Signum: {len(cfg['projects'])} project(s) configured")
     print(f"  service: {cfg['service_url']}")
     print()
 
@@ -2132,9 +2132,9 @@ def handle_post_tool_use():
         # message (already printed to stderr by push()) is visible
         # instead of silently dying
         if e.code != 0:
-            print(f"specs: auto-push failed for {os.path.basename(file_path)} — see error above", file=sys.stderr)
+            print(f"Signum: auto-push failed for {os.path.basename(file_path)} — see error above", file=sys.stderr)
     except Exception as e:
-        print(f"specs: auto-push failed for {os.path.basename(file_path)} — {e}", file=sys.stderr)
+        print(f"Signum: auto-push failed for {os.path.basename(file_path)} — {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -2211,10 +2211,10 @@ def validate_deployment_fields(fields):
     if stage is None and url is None:
         return
     if not stage or not url:
-        print("specs: --deployed-stage and --deployed-url must be set together (or use --clear-deployment)", file=sys.stderr)
+        print("Signum: --deployed-stage and --deployed-url must be set together (or use --clear-deployment)", file=sys.stderr)
         sys.exit(1)
     if stage not in DEPLOY_STAGES:
-        print(f"specs: invalid deployment stage '{stage}'. Valid: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
+        print(f"Signum: invalid deployment stage '{stage}'. Valid: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
         sys.exit(1)
     fields["deployedAt"] = datetime.now(timezone.utc).isoformat()
 
@@ -2257,22 +2257,22 @@ def validate_timing_fields(fields):
     for key, flag in (("startDate", "--start"), ("dueDate", "--due")):
         v = fields.get(key)
         if key in fields and v is not None and not _valid_iso_date(v):
-            print(f"specs: {flag} must be a YYYY-MM-DD date; got '{v}'", file=sys.stderr)
+            print(f"Signum: {flag} must be a YYYY-MM-DD date; got '{v}'", file=sys.stderr)
             sys.exit(1)
     if "estimateHours" in fields and fields["estimateHours"] is not None:
         raw = fields["estimateHours"]
         try:
             hours = float(raw)
         except (TypeError, ValueError):
-            print(f"specs: --estimate must be a number of hours; got '{raw}'", file=sys.stderr)
+            print(f"Signum: --estimate must be a number of hours; got '{raw}'", file=sys.stderr)
             sys.exit(1)
         if hours < 0 or hours > 9999.99 or round(hours, 2) != hours:
-            print(f"specs: --estimate must be 0..9999.99 with at most two decimals; got '{raw}'", file=sys.stderr)
+            print(f"Signum: --estimate must be 0..9999.99 with at most two decimals; got '{raw}'", file=sys.stderr)
             sys.exit(1)
         fields["estimateHours"] = hours
     start, due = fields.get("startDate"), fields.get("dueDate")
     if start and due and start > due:
-        print(f"specs: --start {start} is after --due {due}", file=sys.stderr)
+        print(f"Signum: --start {start} is after --due {due}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -2335,12 +2335,12 @@ def set_status(identifier, new_status):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -2356,11 +2356,11 @@ def set_status(identifier, new_status):
         meta, _ = parse_frontmatter(content)
         doc_id = meta.get("spec_doc_id")
         if not doc_id:
-            print(f"specs: {identifier} has no spec_doc_id in frontmatter", file=sys.stderr)
+            print(f"Signum: {identifier} has no spec_doc_id in frontmatter", file=sys.stderr)
             sys.exit(1)
 
         if new_status not in DOCUMENT_STATUSES:
-            print(f"specs: invalid document status '{new_status}'. Must be one of: {', '.join(DOCUMENT_STATUSES)}", file=sys.stderr)
+            print(f"Signum: invalid document status '{new_status}'. Must be one of: {', '.join(DOCUMENT_STATUSES)}", file=sys.stderr)
             sys.exit(1)
 
         status_code, resp_body = api_request(
@@ -2370,15 +2370,15 @@ def set_status(identifier, new_status):
             data={"status": new_status},
         )
         if status_code not in (200, 201):
-            print(f"specs: failed to update document status (HTTP {status_code}): {resp_body}", file=sys.stderr)
+            print(f"Signum: failed to update document status (HTTP {status_code}): {resp_body}", file=sys.stderr)
             sys.exit(1)
 
         rel = os.path.basename(identifier)
-        print(f"specs: document {rel} → {new_status}")
+        print(f"Signum: document {rel} → {new_status}")
 
     elif is_feature_id:
         if new_status not in FEATURE_STATUSES:
-            print(f"specs: invalid feature status '{new_status}'. Must be one of: {', '.join(FEATURE_STATUSES)}", file=sys.stderr)
+            print(f"Signum: invalid feature status '{new_status}'. Must be one of: {', '.join(FEATURE_STATUSES)}", file=sys.stderr)
             sys.exit(1)
 
         import urllib.parse
@@ -2390,10 +2390,10 @@ def set_status(identifier, new_status):
             data={"status": new_status},
         )
         if status_code not in (200, 201):
-            print(f"specs: failed to update feature status (HTTP {status_code}): {resp_body}", file=sys.stderr)
+            print(f"Signum: failed to update feature status (HTTP {status_code}): {resp_body}", file=sys.stderr)
             sys.exit(1)
 
-        print(f"specs: feature {identifier} → {new_status}")
+        print(f"Signum: feature {identifier} → {new_status}")
 
     else:
         # Try as document UUID
@@ -2405,7 +2405,7 @@ def set_status(identifier, new_status):
                 data={"status": new_status},
             )
             if status_code in (200, 201):
-                print(f"specs: document {identifier} → {new_status}")
+                print(f"Signum: document {identifier} → {new_status}")
                 return
 
         # Try as feature ID without slash — collect all matches first to
@@ -2424,7 +2424,7 @@ def set_status(identifier, new_status):
             if len(matches) > 1:
                 projects_list = ", ".join(m[1] for m in matches)
                 print(
-                    f"specs: feature name '{identifier}' exists in multiple projects: {projects_list}\n"
+                    f"Signum: feature name '{identifier}' exists in multiple projects: {projects_list}\n"
                     f"  Use the qualified form: specs-cli.py set-status <project>/<feature> <status>",
                     file=sys.stderr,
                 )
@@ -2440,10 +2440,10 @@ def set_status(identifier, new_status):
                     data={"status": new_status},
                 )
                 if status_code in (200, 201):
-                    print(f"specs: feature {feature_id} → {new_status}")
+                    print(f"Signum: feature {feature_id} → {new_status}")
                     return
 
-        print(f"specs: could not find feature or document '{identifier}'", file=sys.stderr)
+        print(f"Signum: could not find feature or document '{identifier}'", file=sys.stderr)
         sys.exit(1)
 
 
@@ -2508,10 +2508,10 @@ def _fetch_project_tags(headers, service_url, project_id, usage=False):
     try:
         status_code, body = api_request(url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch tags for '{project_id}' — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch tags for '{project_id}' — {e}", file=sys.stderr)
         return None, False
     if status_code != 200:
-        print(f"specs: failed to fetch tags for '{project_id}' (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: failed to fetch tags for '{project_id}' (HTTP {status_code})", file=sys.stderr)
         return None, False
     payload = json.loads(body)
     return payload.get("tags", []), bool(payload.get("canManage"))
@@ -2526,7 +2526,7 @@ def _resolve_tag(headers, service_url, project_id, ref):
     for t in tags:
         if t.get("id") == ref or t.get("slug") == slug:
             return t
-    print(f"specs: no tag '{ref}' in '{project_id}'", file=sys.stderr)
+    print(f"Signum: no tag '{ref}' in '{project_id}'", file=sys.stderr)
     close = [t for t in tags if slug and (slug in t.get("slug", "") or t.get("slug", "") in slug)]
     if close:
         print(f"  did you mean: {', '.join(t.get('name', '') for t in close[:5])}", file=sys.stderr)
@@ -2549,11 +2549,11 @@ def _require_config_and_auth():
     """Config + auth headers, or exit. Every tag command starts with this."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     return cfg, headers
 
@@ -2571,7 +2571,7 @@ def list_tags(project_id, as_json=False):
         print(json.dumps({"tags": tags, "canManage": can_manage}, indent=2, ensure_ascii=False))
         return
 
-    print(f"specs: {len(tags)} tag(s) in '{project_id}'")
+    print(f"Signum: {len(tags)} tag(s) in '{project_id}'")
     if not tags:
         print("  (none yet — create one with tag-create)")
         return
@@ -2599,7 +2599,7 @@ def create_tag(project_id, name, color=None, description=None, force=False):
     payload = {"name": name}
     if color:
         if color not in TAG_COLORS:
-            print(f"specs: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
+            print(f"Signum: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
             sys.exit(1)
         payload["color"] = color
     if description:
@@ -2611,28 +2611,28 @@ def create_tag(project_id, name, color=None, description=None, force=False):
     try:
         status_code, body = api_request(url, method="POST", headers=headers, data=payload)
     except ConnectionError as e:
-        print(f"specs: failed to create tag — {e}", file=sys.stderr)
+        print(f"Signum: failed to create tag — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
         # The whole point of the feature: stop, show what already exists, and
         # let the human decide. Exit non-zero so a script doesn't sail past it.
         data = json.loads(body)
-        print(f"specs: not creating '{name}' — a similar tag already exists", file=sys.stderr)
+        print(f"Signum: not creating '{name}' — a similar tag already exists", file=sys.stderr)
         _print_tag_suggestions(data)
         print("  reuse one of those, or repeat with --force to create it anyway", file=sys.stderr)
         sys.exit(2)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to create tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        print(f"Signum: failed to create tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(body)
     tag = data.get("tag", {})
     if data.get("created") is False:
-        print(f"specs: tag '#{tag.get('name')}' already exists in '{project_id}'")
+        print(f"Signum: tag '#{tag.get('name')}' already exists in '{project_id}'")
     else:
-        print(f"specs: created tag '#{tag.get('name')}' ({tag.get('color')}) in '{project_id}'")
+        print(f"Signum: created tag '#{tag.get('name')}' ({tag.get('color')}) in '{project_id}'")
 
 
 def update_tag(project_id, ref, name=None, color=None, description=None, force=False):
@@ -2649,13 +2649,13 @@ def update_tag(project_id, ref, name=None, color=None, description=None, force=F
         payload["name"] = name
     if color is not None:
         if color not in TAG_COLORS:
-            print(f"specs: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
+            print(f"Signum: --color must be one of {', '.join(TAG_COLORS)}", file=sys.stderr)
             sys.exit(1)
         payload["color"] = color
     if description is not None:
         payload["description"] = description
     if not payload:
-        print("specs: nothing to update — pass --name, --color, or --description", file=sys.stderr)
+        print("Signum: nothing to update — pass --name, --color, or --description", file=sys.stderr)
         sys.exit(1)
     if force:
         payload["force"] = True
@@ -2664,25 +2664,25 @@ def update_tag(project_id, ref, name=None, color=None, description=None, force=F
     try:
         status_code, body = api_request(url, method="PATCH", headers=headers, data=payload)
     except ConnectionError as e:
-        print(f"specs: failed to update tag — {e}", file=sys.stderr)
+        print(f"Signum: failed to update tag — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
         data = json.loads(body)
         if data.get("error") == "tag_slug_taken":
-            print(f"specs: {data.get('detail', 'that name is already taken')}", file=sys.stderr)
+            print(f"Signum: {data.get('detail', 'that name is already taken')}", file=sys.stderr)
         else:
-            print(f"specs: not renaming '{tag.get('name')}' — a similar tag already exists", file=sys.stderr)
+            print(f"Signum: not renaming '{tag.get('name')}' — a similar tag already exists", file=sys.stderr)
             _print_tag_suggestions(data)
             print("  repeat with --force to rename anyway", file=sys.stderr)
         sys.exit(2)
 
     if status_code != 200:
-        print(f"specs: failed to update tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        print(f"Signum: failed to update tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
         sys.exit(1)
 
     updated = json.loads(body)
-    print(f"specs: updated tag '#{updated.get('name')}' in '{project_id}'")
+    print(f"Signum: updated tag '#{updated.get('name')}' in '{project_id}'")
 
 
 def delete_tag(project_id, ref, force=False):
@@ -2698,21 +2698,21 @@ def delete_tag(project_id, ref, force=False):
     try:
         status_code, body = api_request(url, method="DELETE", headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to delete tag — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete tag — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
         data = json.loads(body)
-        print(f"specs: {data.get('detail', 'tag is in use')}", file=sys.stderr)
+        print(f"Signum: {data.get('detail', 'tag is in use')}", file=sys.stderr)
         sys.exit(2)
     if status_code != 200:
-        print(f"specs: failed to delete tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
+        print(f"Signum: failed to delete tag (HTTP {status_code}): {body[:300]}", file=sys.stderr)
         sys.exit(1)
 
     data = json.loads(body)
     detached = data.get("detachedFrom", 0)
     tail = f" (removed from {detached} item(s))" if detached else ""
-    print(f"specs: deleted tag '#{tag.get('name')}' from '{project_id}'{tail}")
+    print(f"Signum: deleted tag '#{tag.get('name')}' from '{project_id}'{tail}")
 
 
 def _resolve_tag_edit(current_tags, replace=None, add=None, remove=None, clear=False):
@@ -2753,7 +2753,7 @@ def _print_tag_error(status_code, body):
     if data.get("error") != "tag_not_found":
         return False
     unknown = ", ".join(data.get("unknown") or [])
-    print(f"specs: no such tag: {unknown}", file=sys.stderr)
+    print(f"Signum: no such tag: {unknown}", file=sys.stderr)
     _print_tag_suggestions(data)
     print("  create it first with `tag-create`, or use an existing tag", file=sys.stderr)
     return True
@@ -2769,28 +2769,28 @@ def _my_assignments(path, params=None):
     import urllib.parse
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     query = f"?{urllib.parse.urlencode(params)}" if params else ""
     url = f"{cfg['service_url']}{path}{query}"
     try:
         status_code, body = api_request(url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch your assignments — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch your assignments — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print("specs: this Signum instance does not have assignment lists yet (needs spec-service 0.127.0)", file=sys.stderr)
+        print("Signum: this Signum instance does not have assignment lists yet (needs spec-service 0.127.0)", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         try:
             message = json.loads(body).get("error") or f"HTTP {status_code}"
         except ValueError:
             message = f"HTTP {status_code}"
-        print(f"specs: failed to fetch your assignments — {message}", file=sys.stderr)
+        print(f"Signum: failed to fetch your assignments — {message}", file=sys.stderr)
         sys.exit(1)
     return json.loads(body)
 
@@ -2834,7 +2834,7 @@ def my_daily(since=None, kind=None, as_json=False):
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
     items = data.get("items") or []
-    print(f"specs: {len(items)} item(s) assigned to you since {_local_time(data.get('since'))}")
+    print(f"Signum: {len(items)} item(s) assigned to you since {_local_time(data.get('since'))}")
     if not items:
         print("  (nothing new)")
         return
@@ -2848,7 +2848,7 @@ def my_weekly(as_json=False):
         print(json.dumps(data, indent=2, ensure_ascii=False))
         return
     items = data.get("items") or []
-    print(f"specs: {len(items)} open item(s) assigned to you")
+    print(f"Signum: {len(items)} open item(s) assigned to you")
     if not items:
         print("  (nothing is assigned to you right now)")
         return
@@ -2882,12 +2882,12 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -2896,7 +2896,7 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
     if project_id:
         projects = [p for p in projects if p["id"] == project_id]
         if not projects:
-            print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+            print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
             sys.exit(1)
 
     json_out = {}
@@ -2905,11 +2905,11 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
         try:
             status_code, body = api_request(url, headers=headers)
         except ConnectionError as e:
-            print(f"specs: failed to fetch bugs for '{proj['id']}' — {e}", file=sys.stderr)
+            print(f"Signum: failed to fetch bugs for '{proj['id']}' — {e}", file=sys.stderr)
             continue
 
         if status_code != 200:
-            print(f"specs: failed to fetch bugs for '{proj['id']}' (HTTP {status_code})", file=sys.stderr)
+            print(f"Signum: failed to fetch bugs for '{proj['id']}' (HTTP {status_code})", file=sys.stderr)
             continue
 
         bugs = json.loads(body)
@@ -2938,7 +2938,7 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
         if len(projects) > 1:
             print(f"\n{proj['id']} ({len(open_bugs)} {label.strip() or 'total'})")
         else:
-            print(f"specs: {len(open_bugs)} {label}bug(s) in '{proj['id']}'")
+            print(f"Signum: {len(open_bugs)} {label}bug(s) in '{proj['id']}'")
 
         if not open_bugs:
             print(f"  (no {label}bugs)")
@@ -3031,7 +3031,7 @@ def _save_bug_images(project_id, number, bug_id, inline_images, out_dir):
     try:
         os.makedirs(target, exist_ok=True)
     except OSError as e:
-        print(f"specs: could not create image directory '{target}' — {e}", file=sys.stderr)
+        print(f"Signum: could not create image directory '{target}' — {e}", file=sys.stderr)
         return
 
     written = []
@@ -3043,7 +3043,7 @@ def _save_bug_images(project_id, number, bug_id, inline_images, out_dir):
             with open(path, "wb") as f:
                 f.write(base64.b64decode(b64))
         except (OSError, ValueError, binascii.Error) as e:
-            print(f"specs: could not save inline image {index} — {e}", file=sys.stderr)
+            print(f"Signum: could not save inline image {index} — {e}", file=sys.stderr)
             continue
         written.append((path, f"inline: {alt}"))
 
@@ -3057,10 +3057,10 @@ def _save_bug_images(project_id, number, bug_id, inline_images, out_dir):
             with open(path, "wb") as f:
                 f.write(data)
         except SystemExit:
-            print(f"specs: could not download attachment '{name}'", file=sys.stderr)
+            print(f"Signum: could not download attachment '{name}'", file=sys.stderr)
             continue
         except OSError as e:
-            print(f"specs: could not save attachment '{name}' — {e}", file=sys.stderr)
+            print(f"Signum: could not save attachment '{name}' — {e}", file=sys.stderr)
             continue
         written.append((path, f"attachment: {att.get('contentType', '?')}"))
 
@@ -3105,41 +3105,41 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
     """Show full details for a single bug by its short number."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     projects = [p for p in cfg["projects"] if p["id"] == project_id]
     if not projects:
-        print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+        print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
         sys.exit(1)
 
     try:
         number = int(str(bug_number).lstrip("#"))
     except ValueError:
-        print(f"specs: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
+        print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/projects/{project_id}/bugs"
     try:
         status_code, body = api_request(url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch bugs — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
 
     bugs = json.loads(body)
     match = next((b for b in bugs if b.get("number") == number), None)
     if not match:
-        print(f"specs: bug #{number} not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     # The list endpoint returns a deliberately slim shape — it omits the body
@@ -3158,12 +3158,12 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
                 detail = json.loads(d_body)
             else:
                 print(
-                    f"specs: could not fetch bug body (HTTP {d_status}); showing metadata only",
+                    f"Signum: could not fetch bug body (HTTP {d_status}); showing metadata only",
                     file=sys.stderr,
                 )
         except ConnectionError as e:
             print(
-                f"specs: could not fetch bug body ({e}); showing metadata only",
+                f"Signum: could not fetch bug body ({e}); showing metadata only",
                 file=sys.stderr,
             )
 
@@ -3244,29 +3244,29 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
 def set_bug_status(project_id, bug_number, status):
     """Update a bug's status by its short number."""
     if status not in BUG_STATUSES:
-        print(f"specs: invalid status '{status}'. Valid: {', '.join(BUG_STATUSES)}", file=sys.stderr)
+        print(f"Signum: invalid status '{status}'. Valid: {', '.join(BUG_STATUSES)}", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     projects = [p for p in cfg["projects"] if p["id"] == project_id]
     if not projects:
-        print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+        print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
         sys.exit(1)
 
     try:
         number = int(str(bug_number).lstrip("#"))
     except ValueError:
-        print(f"specs: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
+        print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
     # Resolve short number to UUID by fetching the project's bug list.
@@ -3274,16 +3274,16 @@ def set_bug_status(project_id, bug_number, status):
     try:
         status_code, body = api_request(list_url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch bugs — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
-        print(f"specs: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
 
     bugs = json.loads(body)
     match = next((b for b in bugs if b.get("number") == number), None)
     if not match:
-        print(f"specs: bug #{number} not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     bug_id = match["id"]
@@ -3291,14 +3291,14 @@ def set_bug_status(project_id, bug_number, status):
     try:
         status_code, body = api_request(patch_url, method="PATCH", headers=headers, data={"status": status})
     except ConnectionError as e:
-        print(f"specs: failed to update bug — {e}", file=sys.stderr)
+        print(f"Signum: failed to update bug — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to update bug #{number} (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to update bug #{number} (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: bug #{number} '{match.get('title', '')}' → {status}")
+    print(f"Signum: bug #{number} '{match.get('title', '')}' → {status}")
 
 
 def _resolve_bug(project_id, bug_number):
@@ -3309,40 +3309,40 @@ def _resolve_bug(project_id, bug_number):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     projects = [p for p in cfg["projects"] if p["id"] == project_id]
     if not projects:
-        print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+        print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
         sys.exit(1)
 
     try:
         number = int(str(bug_number).lstrip("#"))
     except ValueError:
-        print(f"specs: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
+        print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
     list_url = f"{service_url}/api/portal/projects/{project_id}/bugs"
     try:
         status_code, body = api_request(list_url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch bugs — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
-        print(f"specs: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
 
     bugs = json.loads(body)
     match = next((b for b in bugs if b.get("number") == number), None)
     if not match:
-        print(f"specs: bug #{number} not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     return cfg, headers, service_url, match
@@ -3359,11 +3359,11 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
     update_backlog_item for why it is folded after the bug is resolved.
     """
     if not fields and not tag_edit:
-        print("specs: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign", file=sys.stderr)
+        print("Signum: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
     if "severity" in fields and fields["severity"] not in BUG_SEVERITIES:
-        print(f"specs: invalid severity '{fields['severity']}'. Valid: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
+        print(f"Signum: invalid severity '{fields['severity']}'. Valid: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
         sys.exit(1)
 
     _, headers, service_url, bug = _resolve_bug(project_id, bug_number)
@@ -3383,7 +3383,7 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
             data=fields,
         )
     except ConnectionError as e:
-        print(f"specs: failed to update bug — {e}", file=sys.stderr)
+        print(f"Signum: failed to update bug — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
@@ -3394,11 +3394,11 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
             err = body
-        print(f"specs: failed to update bug #{number} (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to update bug #{number} (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
     changed = ", ".join(f"{k}={v!r}" for k, v in fields.items())
-    print(f"specs: updated bug #{number} ({changed})")
+    print(f"Signum: updated bug #{number} ({changed})")
 
 
 def add_bug_comment(project_id, bug_number, body_text):
@@ -3417,7 +3417,7 @@ def add_bug_comment(project_id, bug_number, body_text):
             data={"body": body_text},
         )
     except ConnectionError as e:
-        print(f"specs: failed to add comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to add comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
@@ -3425,10 +3425,10 @@ def add_bug_comment(project_id, bug_number, body_text):
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to add comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to add comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment added to bug #{number}")
+    print(f"Signum: comment added to bug #{number}")
 
 
 def list_bug_comments(project_id, bug_number, as_json=False):
@@ -3444,11 +3444,11 @@ def list_bug_comments(project_id, bug_number, as_json=False):
     try:
         status_code, body = api_request(url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch bug — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch bug — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to fetch bug #{number} (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to fetch bug #{number} (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     detail = json.loads(body)
@@ -3467,10 +3467,10 @@ def list_bug_comments(project_id, bug_number, as_json=False):
         return
 
     if not comments:
-        print(f"specs: no comments on bug #{number}")
+        print(f"Signum: no comments on bug #{number}")
         return
 
-    print(f"specs: {len(comments)} comment(s) on bug #{number}")
+    print(f"Signum: {len(comments)} comment(s) on bug #{number}")
     print()
     for c in comments:
         author = c.get("author", "?")
@@ -3501,24 +3501,24 @@ def edit_bug_comment(project_id, bug_number, comment_id, body_text):
             data={"body": body_text},
         )
     except ConnectionError as e:
-        print(f"specs: failed to edit comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to edit comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 403:
-        print("specs: you can only edit your own comments", file=sys.stderr)
+        print("Signum: you can only edit your own comments", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print(f"specs: comment {comment_id} not found on bug #{number}", file=sys.stderr)
+        print(f"Signum: comment {comment_id} not found on bug #{number}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         try:
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} on bug #{number} edited")
+    print(f"Signum: comment {comment_id} on bug #{number} edited")
 
 
 def delete_bug_comment(project_id, bug_number, comment_id):
@@ -3531,24 +3531,24 @@ def delete_bug_comment(project_id, bug_number, comment_id):
     try:
         status_code, resp = api_request(url, method="DELETE", headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to delete comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 403:
-        print("specs: you can only delete your own comments", file=sys.stderr)
+        print("Signum: you can only delete your own comments", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print(f"specs: comment {comment_id} not found on bug #{number}", file=sys.stderr)
+        print(f"Signum: comment {comment_id} not found on bug #{number}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 204):
         try:
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to delete comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to delete comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} on bug #{number} deleted")
+    print(f"Signum: comment {comment_id} on bug #{number} deleted")
 
 
 def list_backlog(project_id=None, view="tree", status_filter=None, priority_filter=None, assignee_filter=None,
@@ -3568,12 +3568,12 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -3582,7 +3582,7 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
     if project_id:
         projects = [p for p in projects if p["id"] == project_id]
         if not projects:
-            print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+            print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
             sys.exit(1)
 
     # Tree view renders children only underneath a surviving parent, so an
@@ -3604,11 +3604,11 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
         try:
             status_code, body = api_request(url, headers=headers)
         except ConnectionError as e:
-            print(f"specs: failed to fetch backlog for '{proj['id']}' — {e}", file=sys.stderr)
+            print(f"Signum: failed to fetch backlog for '{proj['id']}' — {e}", file=sys.stderr)
             continue
 
         if status_code != 200:
-            print(f"specs: failed to fetch backlog for '{proj['id']}' (HTTP {status_code})", file=sys.stderr)
+            print(f"Signum: failed to fetch backlog for '{proj['id']}' (HTTP {status_code})", file=sys.stderr)
             continue
 
         items = json.loads(body)
@@ -3640,7 +3640,7 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             print(f"\n{proj['id']} ({len(active)} active)")
         else:
             scope = "" if include_all else (status_filter or "active")
-            print(f"specs: {len(active)} {scope + ' ' if scope else ''}backlog item(s) in '{proj['id']}'")
+            print(f"Signum: {len(active)} {scope + ' ' if scope else ''}backlog item(s) in '{proj['id']}'")
 
         if not active:
             print("  (no active items)")
@@ -3691,9 +3691,9 @@ def _print_assignee_error(status_code, body, assignee):
     except (json.JSONDecodeError, TypeError):
         return
     if err == "assignee_not_found":
-        print(f"specs: no portal user found for '{assignee}' — they need to have signed in at least once", file=sys.stderr)
+        print(f"Signum: no portal user found for '{assignee}' — they need to have signed in at least once", file=sys.stderr)
     elif err == "assignee_no_access":
-        print(f"specs: '{assignee}' has no access to this project — grant access first, then assign", file=sys.stderr)
+        print(f"Signum: '{assignee}' has no access to this project — grant access first, then assign", file=sys.stderr)
 
 
 def _filter_by_assignee(items, assignee_filter):
@@ -3835,23 +3835,23 @@ def view_backlog(project_id, ref, as_json=False):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     projects = [p for p in cfg["projects"] if p["id"] == project_id]
     if not projects:
-        print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+        print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
         sys.exit(1)
 
     item, err = _fetch_backlog_detail(headers, service_url, project_id, ref)
     if not item:
-        print(f"specs: {err}", file=sys.stderr)
+        print(f"Signum: {err}", file=sys.stderr)
         sys.exit(1)
 
     if as_json:
@@ -3965,12 +3965,12 @@ def _require_comment_body(body_text, command):
     something a person meant to say.
     """
     if body_text is None or not body_text.strip():
-        print("specs: comment body is required", file=sys.stderr)
+        print("Signum: comment body is required", file=sys.stderr)
         sys.exit(1)
     if body_text.strip().startswith("--"):
         print(
-            f"specs: '{body_text.strip().split()[0]}' looks like a flag, not a comment.\n"
-            f"       The body is positional — pass it directly:\n"
+            f"Signum: '{body_text.strip().split()[0]}' looks like a flag, not a comment.\n"
+            f"        The body is positional — pass it directly:\n"
             f'         specs-cli.py {command} <project> <ref> "your comment"',
             file=sys.stderr,
         )
@@ -3983,17 +3983,17 @@ def add_backlog_comment(project_id, ref, body_text):
     _require_comment_body(body_text, "backlog-comment")
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
     if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/comments"
@@ -4002,10 +4002,10 @@ def add_backlog_comment(project_id, ref, body_text):
     # sending an empty body → server 400 "body is required").
     sc, body = api_request(url, method="POST", headers=headers, data={"body": body_text})
     if sc not in (200, 201):
-        print(f"specs: comment failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: comment failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
     resp = json.loads(body) if body else {}
-    print(f"specs: comment added to #{item.get('number')} — id {resp.get('id', '?')}")
+    print(f"Signum: comment added to #{item.get('number')} — id {resp.get('id', '?')}")
 
 
 def depend_backlog(project_id, ref, on_ref, remove=False):
@@ -4018,21 +4018,21 @@ def depend_backlog(project_id, ref, on_ref, remove=False):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
     if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
     on_id, on_item = _resolve_backlog_id(headers, service_url, project_id, on_ref)
     if not on_id:
-        print(f"specs: backlog item '{on_ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog item '{on_ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     base = f"{service_url}/api/portal/backlog/{item_id}/dependencies"
@@ -4048,15 +4048,15 @@ def depend_backlog(project_id, ref, on_ref, remove=False):
             detail = (json.loads(body) or {}).get("error", "")
         except Exception:
             detail = (body or "")[:200]
-        print(f"specs: dependency change failed (HTTP {sc}): {detail}", file=sys.stderr)
+        print(f"Signum: dependency change failed (HTTP {sc}): {detail}", file=sys.stderr)
         sys.exit(1)
 
     a, b = item.get("number"), on_item.get("number")
     if remove:
-        print(f"specs: #{a} no longer depends on #{b}")
+        print(f"Signum: #{a} no longer depends on #{b}")
     else:
-        print(f"specs: #{a} now depends on #{b} — {on_item.get('title', '')}")
-    print("specs: run 'view-backlog' to see the status the service settled on")
+        print(f"Signum: #{a} now depends on #{b} — {on_item.get('title', '')}")
+    print("Signum: run 'view-backlog' to see the status the service settled on")
 
 
 def list_backlog_comments(project_id, ref, as_json=False):
@@ -4064,17 +4064,17 @@ def list_backlog_comments(project_id, ref, as_json=False):
     already returns embedded comments — saves a round trip."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item, err = _fetch_backlog_detail(headers, service_url, project_id, ref)
     if not item:
-        print(f"specs: {err}", file=sys.stderr)
+        print(f"Signum: {err}", file=sys.stderr)
         sys.exit(1)
 
     comments = item.get("comments") or []
@@ -4083,9 +4083,9 @@ def list_backlog_comments(project_id, ref, as_json=False):
         return
 
     if not comments:
-        print(f"specs: no comments on backlog #{item.get('number')}")
+        print(f"Signum: no comments on backlog #{item.get('number')}")
         return
-    print(f"specs: {len(comments)} comment(s) on backlog #{item.get('number')}")
+    print(f"Signum: {len(comments)} comment(s) on backlog #{item.get('number')}")
     print()
     for c in comments:
         author = c.get("author") or c.get("authorType", "anonymous")
@@ -4102,17 +4102,17 @@ def edit_backlog_comment(project_id, ref, comment_id, body_text):
 
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
     if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/comments/{comment_id}"
@@ -4123,49 +4123,49 @@ def edit_backlog_comment(project_id, ref, comment_id, body_text):
             data={"body": body_text},
         )
     except ConnectionError as e:
-        print(f"specs: failed to edit comment — {e}", file=sys.stderr)
+        print(f"Signum: failed to edit comment — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 403:
-        print("specs: you can only edit your own comments", file=sys.stderr)
+        print("Signum: you can only edit your own comments", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print(f"specs: comment {comment_id} not found on backlog #{item.get('number')}", file=sys.stderr)
+        print(f"Signum: comment {comment_id} not found on backlog #{item.get('number')}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         try:
             err = json.loads(resp).get("error", resp)
         except (json.JSONDecodeError, AttributeError):
             err = resp
-        print(f"specs: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to edit comment (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: comment {comment_id} on backlog #{item.get('number')} edited")
+    print(f"Signum: comment {comment_id} on backlog #{item.get('number')} edited")
 
 
 def delete_backlog_comment(project_id, ref, comment_id):
     """Delete a comment from a backlog item."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, ref)
     if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/comments/{comment_id}"
     sc, body = api_request(url, method="DELETE", headers=headers)
     if sc not in (200, 204):
-        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
-    print(f"specs: deleted comment {comment_id} from backlog #{item.get('number')}")
+    print(f"Signum: deleted comment {comment_id} from backlog #{item.get('number')}")
 
 
 # Spec 023: `promote_backlog` removed along with the endpoint it called. There
@@ -4181,26 +4181,26 @@ def restore_backlog(project_id, ref):
     """Restore a soft-deleted backlog item (internal users only)."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, _item = _resolve_backlog_id(headers, service_url, project_id, ref)
     if not item_id:
-        print(f"specs: backlog item '{ref}' not found in '{project_id}' (deleted items aren't in the active list — pass the uuid)", file=sys.stderr)
+        print(f"Signum: backlog item '{ref}' not found in '{project_id}' (deleted items aren't in the active list — pass the uuid)", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}/restore"
     sc, body = api_request(url, method="POST", headers=headers, data=None)
     if sc not in (200, 201):
-        print(f"specs: restore failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: restore failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
     resp = json.loads(body) if body else {}
-    print(f"specs: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
+    print(f"Signum: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
 
 
 def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False, assignee=None, tags=None):
@@ -4212,16 +4212,16 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
     rather than quietly growing the project's vocabulary."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     if is_epic and parent:
-        print("specs: --epic and --parent are mutually exclusive (epics can't have a parent)", file=sys.stderr)
+        print("Signum: --epic and --parent are mutually exclusive (epics can't have a parent)", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -4230,10 +4230,10 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
     if parent:
         parent_id, parent_item = _resolve_backlog_id(headers, service_url, project_id, parent)
         if not parent_id:
-            print(f"specs: parent '{parent}' not found in project '{project_id}'", file=sys.stderr)
+            print(f"Signum: parent '{parent}' not found in project '{project_id}'", file=sys.stderr)
             sys.exit(1)
         if not parent_item.get("isEpic"):
-            print(f"specs: '#{parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
+            print(f"Signum: '#{parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
             sys.exit(1)
 
     url = f"{service_url}/api/portal/projects/{project_id}/backlog"
@@ -4254,7 +4254,7 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to create backlog item — {e}", file=sys.stderr)
+        print(f"Signum: failed to create backlog item — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 404:
@@ -4264,10 +4264,10 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
             err_body = {}
         if err_body.get("error") == "project_not_found":
             print(
-                f"specs: project '{project_id}' is not registered with Signum.\n"
-                f"       Your local config lists it, but the server doesn't know about it.\n"
-                f"       Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
-                f"       or check the canonical list via the portal at /api/portal/projects.",
+                f"Signum: project '{project_id}' is not registered with Signum.\n"
+                f"        Your local config lists it, but the server doesn't know about it.\n"
+                f"        Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
+                f"        or check the canonical list via the portal at /api/portal/projects.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -4275,7 +4275,7 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         _print_assignee_error(status_code, body, assignee)
         if _print_tag_error(status_code, body):
             sys.exit(1)
-        print(f"specs: failed to create backlog item (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to create backlog item (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     item = json.loads(body)
@@ -4283,7 +4283,7 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
     parent_note = f" under epic '{parent}'" if parent_id else ""
     assigned_note = f", assigned to {_assignee_label(item) or assignee}" if assignee else ""
     tag_note = f", tagged {' '.join('#' + n for n in _tag_names(item))}" if _tag_names(item) else ""
-    print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}{tag_note}")
+    print(f"Signum: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}{tag_note}")
     # The portal detail route takes the item number, not its uuid (see view-backlog).
     # No number in the response means no link, rather than one that 404s.
     if item.get("number"):
@@ -4294,19 +4294,19 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
     """Set or clear the parent of a backlog item. parent_ref of 'none' clears."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, item_ref)
     if not item_id:
-        print(f"specs: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
+        print(f"Signum: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     if str(parent_ref).lower() in ("none", "null", ""):
@@ -4314,10 +4314,10 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
     else:
         new_parent_id, new_parent_item = _resolve_backlog_id(headers, service_url, project_id, parent_ref)
         if not new_parent_id:
-            print(f"specs: parent '{parent_ref}' not found in project '{project_id}'", file=sys.stderr)
+            print(f"Signum: parent '{parent_ref}' not found in project '{project_id}'", file=sys.stderr)
             sys.exit(1)
         if not new_parent_item.get("isEpic"):
-            print(f"specs: '#{new_parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
+            print(f"Signum: '#{new_parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
             sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}"
@@ -4328,7 +4328,7 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
             data={"parentId": new_parent_id},
         )
     except ConnectionError as e:
-        print(f"specs: failed to update parent — {e}", file=sys.stderr)
+        print(f"Signum: failed to update parent — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
@@ -4336,13 +4336,13 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
             err = body
-        print(f"specs: failed to update parent (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to update parent (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
     if new_parent_id:
-        print(f"specs: '#{item.get('number')}' is now a child of '{parent_ref}'")
+        print(f"Signum: '#{item.get('number')}' is now a child of '{parent_ref}'")
     else:
-        print(f"specs: '#{item.get('number')}' parent cleared (now top-level)")
+        print(f"Signum: '#{item.get('number')}' parent cleared (now top-level)")
 
 
 def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
@@ -4359,24 +4359,24 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
     done by the caller before the round-trip.
     """
     if not fields and not tag_edit:
-        print("specs: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign", file=sys.stderr)
+        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, item_ref)
     if not item_id:
-        print(f"specs: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
+        print(f"Signum: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     if tag_edit:
@@ -4392,7 +4392,7 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
             data=fields,
         )
     except ConnectionError as e:
-        print(f"specs: failed to update item — {e}", file=sys.stderr)
+        print(f"Signum: failed to update item — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
@@ -4403,30 +4403,30 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
             err = body
-        print(f"specs: failed to update item (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to update item (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
     changed = ", ".join(f"{k}={v!r}" for k, v in fields.items())
-    print(f"specs: updated '#{item.get('number')}' ({changed})")
+    print(f"Signum: updated '#{item.get('number')}' ({changed})")
 
 
 def delete_backlog_item(project_id, item_ref):
     """Soft-delete a backlog item. The server cascades to active children."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, item_ref)
     if not item_id:
-        print(f"specs: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
+        print(f"Signum: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}"
@@ -4436,7 +4436,7 @@ def delete_backlog_item(project_id, item_ref):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to delete item — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete item — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 204):
@@ -4444,7 +4444,7 @@ def delete_backlog_item(project_id, item_ref):
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
             err = body
-        print(f"specs: failed to delete item (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to delete item (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
     cascaded = 0
@@ -4453,7 +4453,7 @@ def delete_backlog_item(project_id, item_ref):
     except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
         pass
     suffix = f" (cascaded {cascaded} child item(s))" if cascaded else ""
-    print(f"specs: deleted '#{item.get('number')}: {item.get('title')}'{suffix}")
+    print(f"Signum: deleted '#{item.get('number')}: {item.get('title')}'{suffix}")
 
 
 def _embed_images(description, image_paths):
@@ -4463,7 +4463,7 @@ def _embed_images(description, image_paths):
     for path in image_paths:
         abs_path = os.path.abspath(path)
         if not os.path.isfile(abs_path):
-            print(f"specs: image not found: {path}", file=sys.stderr)
+            print(f"Signum: image not found: {path}", file=sys.stderr)
             continue
         mime = mimetypes.guess_type(abs_path)[0] or "image/png"
         with open(abs_path, "rb") as f:
@@ -4477,16 +4477,16 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
     """Create a bug report, optionally with attached images and tags (spec 027)."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     if severity not in BUG_SEVERITIES:
-        print(f"specs: invalid severity '{severity}'. Must be one of: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
+        print(f"Signum: invalid severity '{severity}'. Must be one of: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
         sys.exit(1)
 
     # Embed images into description
@@ -4505,7 +4505,7 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to create bug — {e}", file=sys.stderr)
+        print(f"Signum: failed to create bug — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 404:
@@ -4515,22 +4515,22 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
             err_body = {}
         if err_body.get("error") == "project_not_found":
             print(
-                f"specs: project '{project_id}' is not registered with Signum.\n"
-                f"       Your local config lists it, but the server doesn't know about it.\n"
-                f"       Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
-                f"       or check the canonical list via the portal at /api/portal/projects.",
+                f"Signum: project '{project_id}' is not registered with Signum.\n"
+                f"        Your local config lists it, but the server doesn't know about it.\n"
+                f"        Run `python3 scripts/bootstrap-specs.py {project_id} <specs-path>` from ops-cortex-core,\n"
+                f"        or check the canonical list via the portal at /api/portal/projects.",
                 file=sys.stderr,
             )
             sys.exit(1)
     if status_code not in (200, 201):
         if _print_tag_error(status_code, body):
             sys.exit(1)
-        print(f"specs: failed to create bug (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to create bug (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     bug = json.loads(body)
     tag_note = f"  tags: {' '.join('#' + n for n in _tag_names(bug))}" if _tag_names(bug) else ""
-    print(f"specs: bug #{bug.get('number', '?')} created — {title}")
+    print(f"Signum: bug #{bug.get('number', '?')} created — {title}")
     if tag_note:
         print(tag_note)
     print(f"  view: {service_url}/portal/{project_id}/bugs/{bug['id']}")
@@ -4557,7 +4557,7 @@ def _find_project(cfg, project_id):
     for proj in cfg["projects"]:
         if proj["id"] == project_id:
             return proj
-    print(f"specs: project '{project_id}' not in config", file=sys.stderr)
+    print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
     sys.exit(1)
 
 
@@ -4565,16 +4565,16 @@ def set_description(feature_id, description):
     """Set or clear a feature's shortDescription. Pass "" to clear."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     if "/" not in feature_id:
-        print(f"specs: feature id must be 'project/name' (got '{feature_id}')", file=sys.stderr)
+        print(f"Signum: feature id must be 'project/name' (got '{feature_id}')", file=sys.stderr)
         sys.exit(1)
 
     import urllib.parse
@@ -4587,13 +4587,13 @@ def set_description(feature_id, description):
         data={"short_description": description},
     )
     if status_code not in (200, 201):
-        print(f"specs: failed to update description (HTTP {status_code}): {resp_body}", file=sys.stderr)
+        print(f"Signum: failed to update description (HTTP {status_code}): {resp_body}", file=sys.stderr)
         sys.exit(1)
 
     if description == "":
-        print(f"specs: feature {feature_id} description cleared")
+        print(f"Signum: feature {feature_id} description cleared")
     else:
-        print(f"specs: feature {feature_id} description updated")
+        print(f"Signum: feature {feature_id} description updated")
 
 
 def set_title(feature_id, title):
@@ -4605,21 +4605,21 @@ def set_title(feature_id, title):
     output of the auto-derivation during rename).
     """
     if not title or not title.strip():
-        print("specs: title must be non-empty (use rename-feature to change the slug)", file=sys.stderr)
+        print("Signum: title must be non-empty (use rename-feature to change the slug)", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     if "/" not in feature_id:
-        print(f"specs: feature id must be 'project/name' (got '{feature_id}')", file=sys.stderr)
+        print(f"Signum: feature id must be 'project/name' (got '{feature_id}')", file=sys.stderr)
         sys.exit(1)
 
     import urllib.parse
@@ -4633,33 +4633,33 @@ def set_title(feature_id, title):
             data={"title": title},
         )
     except ConnectionError as e:
-        print(f"specs: failed to update title — {e}", file=sys.stderr)
+        print(f"Signum: failed to update title — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 404:
-        print(f"specs: feature '{feature_id}' not found", file=sys.stderr)
+        print(f"Signum: feature '{feature_id}' not found", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         try:
             err = json.loads(resp_body).get("error", resp_body)
         except (json.JSONDecodeError, AttributeError):
             err = resp_body
-        print(f"specs: failed to update title (HTTP {status_code}): {err}", file=sys.stderr)
+        print(f"Signum: failed to update title (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"specs: feature {feature_id} title → {title!r}")
+    print(f"Signum: feature {feature_id} title → {title!r}")
 
 
 def create_feature(project_id, name, initial_status="specifying", description=None):
     """Create a new feature in a project."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     proj = _find_project(cfg, project_id)
@@ -4706,14 +4706,14 @@ def create_feature(project_id, name, initial_status="specifying", description=No
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to create feature — {e}", file=sys.stderr)
+        print(f"Signum: failed to create feature — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
-        print(f"specs: feature '{feature_id}' already exists", file=sys.stderr)
+        print(f"Signum: feature '{feature_id}' already exists", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
-        print(f"specs: failed to create feature (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to create feature (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     # Set status if not the API default ("draft")
@@ -4738,9 +4738,9 @@ def create_feature(project_id, name, initial_status="specifying", description=No
             data={"short_description": description},
         )
         if status_code not in (200, 201):
-            print(f"specs: warning — feature created but description PATCH failed (HTTP {status_code}): {resp_body}", file=sys.stderr)
+            print(f"Signum: warning — feature created but description PATCH failed (HTTP {status_code}): {resp_body}", file=sys.stderr)
 
-    print(f"specs: created feature '{feature_id}'")
+    print(f"Signum: created feature '{feature_id}'")
     print(f"  path: {local_dir}")
     print(f"  status: {initial_status}")
     print(f"  portal: {service_url}/portal/{project_id}/specs/{folder_name}")
@@ -4750,12 +4750,12 @@ def create_document(project_id, feature_name, filename):
     """Add a document to an existing feature."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     proj = _find_project(cfg, project_id)
@@ -4769,7 +4769,7 @@ def create_document(project_id, feature_name, filename):
 
     local_dir = os.path.join(specs_path, feature_name)
     if not os.path.isdir(local_dir):
-        print(f"specs: feature folder not found: {local_dir}", file=sys.stderr)
+        print(f"Signum: feature folder not found: {local_dir}", file=sys.stderr)
         print(f"  run: specs-cli.py create-feature {project_id} {feature_name}", file=sys.stderr)
         sys.exit(1)
 
@@ -4779,7 +4779,7 @@ def create_document(project_id, feature_name, filename):
             content = f.read()
         meta, _ = parse_frontmatter(content)
         if meta.get("spec_doc_id"):
-            print(f"specs: {filename} already tracked (doc_id: {meta['spec_doc_id']})", file=sys.stderr)
+            print(f"Signum: {filename} already tracked (doc_id: {meta['spec_doc_id']})", file=sys.stderr)
             return
 
     # Read existing content or create placeholder
@@ -4804,11 +4804,11 @@ def create_document(project_id, feature_name, filename):
             data=payload,
         )
     except ConnectionError as e:
-        print(f"specs: failed to create document — {e}", file=sys.stderr)
+        print(f"Signum: failed to create document — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 201):
-        print(f"specs: failed to create document (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to create document (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     resp = json.loads(body)
@@ -4831,7 +4831,7 @@ def create_document(project_id, feature_name, filename):
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(render_frontmatter(meta, f"\n# {title}\n"))
 
-    print(f"specs: created document '{filename}' in '{feature_id}'")
+    print(f"Signum: created document '{filename}' in '{feature_id}'")
     print(f"  path: {local_path}")
     print(f"  doc_id: {doc_id}")
 
@@ -4850,12 +4850,12 @@ def rename_feature(project_id, old_name, new_name, title_override=None):
     """Rename a feature folder and update the service (name + title)."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     proj = _find_project(cfg, project_id)
@@ -4876,11 +4876,11 @@ def rename_feature(project_id, old_name, new_name, title_override=None):
     new_dir = os.path.join(specs_path, new_name)
 
     if not os.path.isdir(old_dir):
-        print(f"specs: feature folder not found: {old_dir}", file=sys.stderr)
+        print(f"Signum: feature folder not found: {old_dir}", file=sys.stderr)
         sys.exit(1)
 
     if os.path.exists(new_dir):
-        print(f"specs: target folder already exists: {new_dir}", file=sys.stderr)
+        print(f"Signum: target folder already exists: {new_dir}", file=sys.stderr)
         sys.exit(1)
 
     # Update service — send both name and title (bug #6 fix).
@@ -4895,19 +4895,19 @@ def rename_feature(project_id, old_name, new_name, title_override=None):
             data={"name": new_name, "title": new_title},
         )
     except ConnectionError as e:
-        print(f"specs: failed to rename feature — {e}", file=sys.stderr)
+        print(f"Signum: failed to rename feature — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
-        print(f"specs: feature '{new_feature_id}' already exists in service", file=sys.stderr)
+        print(f"Signum: feature '{new_feature_id}' already exists in service", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
-        print(f"specs: failed to rename feature (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to rename feature (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     os.rename(old_dir, new_dir)
 
-    print(f"specs: renamed '{old_feature_id}' → '{new_feature_id}'")
+    print(f"Signum: renamed '{old_feature_id}' → '{new_feature_id}'")
     print(f"  title: {new_title}")
     print(f"  path: {new_dir}")
 
@@ -4957,7 +4957,7 @@ def _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, verb):
     if not twins:
         return
     print(
-        f"specs: refusing to {verb} — {len(twins) + 1} files in this folder carry "
+        f"Signum: refusing to {verb} — {len(twins) + 1} files in this folder carry "
         f"spec_doc_id {doc_id}:",
         file=sys.stderr,
     )
@@ -4978,19 +4978,19 @@ def rename_document(file_path, new_filename):
     """Rename a document file and update the service."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     abs_path = os.path.abspath(file_path)
 
     if not os.path.isfile(abs_path):
-        print(f"specs: file not found: {file_path}", file=sys.stderr)
+        print(f"Signum: file not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
     if not new_filename.endswith(".md"):
@@ -5002,7 +5002,7 @@ def rename_document(file_path, new_filename):
     doc_id = meta.get("spec_doc_id")
 
     if not doc_id:
-        print(f"specs: {file_path} has no spec_doc_id — not tracked by service", file=sys.stderr)
+        print(f"Signum: {file_path} has no spec_doc_id — not tracked by service", file=sys.stderr)
         sys.exit(1)
 
     _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, "rename")
@@ -5015,20 +5015,20 @@ def rename_document(file_path, new_filename):
             data={"filename": new_filename},
         )
     except ConnectionError as e:
-        print(f"specs: failed to rename document — {e}", file=sys.stderr)
+        print(f"Signum: failed to rename document — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code == 409:
-        print(f"specs: document '{new_filename}' already exists in this feature", file=sys.stderr)
+        print(f"Signum: document '{new_filename}' already exists in this feature", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
-        print(f"specs: failed to rename document (HTTP {status_code}): {resp_body}", file=sys.stderr)
+        print(f"Signum: failed to rename document (HTTP {status_code}): {resp_body}", file=sys.stderr)
         sys.exit(1)
 
     new_path = os.path.join(os.path.dirname(abs_path), new_filename)
     os.rename(abs_path, new_path)
 
-    print(f"specs: renamed '{os.path.basename(abs_path)}' → '{new_filename}'")
+    print(f"Signum: renamed '{os.path.basename(abs_path)}' → '{new_filename}'")
     print(f"  path: {new_path}")
 
 
@@ -5036,19 +5036,19 @@ def delete_document(file_path):
     """Delete a document from filesystem and service."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
     abs_path = os.path.abspath(file_path)
 
     if not os.path.isfile(abs_path):
-        print(f"specs: file not found: {file_path}", file=sys.stderr)
+        print(f"Signum: file not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
     with open(abs_path, "r", encoding="utf-8") as f:
@@ -5057,9 +5057,9 @@ def delete_document(file_path):
     doc_id = meta.get("spec_doc_id")
 
     if not doc_id:
-        print(f"specs: {file_path} has no spec_doc_id — not tracked by service", file=sys.stderr)
+        print(f"Signum: {file_path} has no spec_doc_id — not tracked by service", file=sys.stderr)
         os.remove(abs_path)
-        print(f"specs: deleted local file: {file_path}")
+        print(f"Signum: deleted local file: {file_path}")
         return
 
     _refuse_if_ambiguous_doc_id(file_path, abs_path, doc_id, "delete")
@@ -5071,27 +5071,27 @@ def delete_document(file_path):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to delete from service — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete from service — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 204, 404):
-        print(f"specs: failed to delete document (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to delete document (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     os.remove(abs_path)
-    print(f"specs: deleted '{os.path.basename(abs_path)}' (doc_id: {doc_id})")
+    print(f"Signum: deleted '{os.path.basename(abs_path)}' (doc_id: {doc_id})")
 
 
 def delete_feature(project_id, feature_name):
     """Delete a feature and all its documents."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     proj = _find_project(cfg, project_id)
@@ -5111,30 +5111,30 @@ def delete_feature(project_id, feature_name):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to delete from service — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete from service — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code not in (200, 204, 404):
-        print(f"specs: failed to delete feature (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to delete feature (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     if os.path.isdir(local_dir):
         import shutil
         shutil.rmtree(local_dir)
 
-    print(f"specs: deleted feature '{feature_id}'")
+    print(f"Signum: deleted feature '{feature_id}'")
 
 
 def list_docs(project_id, feature_name):
     """List all documents in a feature."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -5149,21 +5149,21 @@ def list_docs(project_id, feature_name):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to look up feature — {e}", file=sys.stderr)
+        print(f"Signum: failed to look up feature — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: feature '{feature_id}' not found (HTTP {status_code})", file=sys.stderr)
+        print(f"Signum: feature '{feature_id}' not found (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
 
     feature_data = json.loads(body)
     documents = feature_data.get("documents", [])
 
     if not documents:
-        print(f"specs: no documents in '{feature_id}'")
+        print(f"Signum: no documents in '{feature_id}'")
         return
 
-    print(f"specs: {len(documents)} document(s) in '{feature_id}'")
+    print(f"Signum: {len(documents)} document(s) in '{feature_id}'")
     print()
     for doc in documents:
         filename = doc.get("filename", "?")
@@ -5182,12 +5182,12 @@ def feature_snapshot(project_id, feature_name, as_json=False):
     """
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -5202,17 +5202,17 @@ def feature_snapshot(project_id, feature_name, as_json=False):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to fetch snapshot — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch snapshot — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code in (401, 403):
-        print("specs: authentication failed — run /awolve-spec:login", file=sys.stderr)
+        print("Signum: authentication failed — run /awolve-spec:login", file=sys.stderr)
         sys.exit(1)
     if status_code == 404:
-        print(f"specs: feature '{feature_id}' not found", file=sys.stderr)
+        print(f"Signum: feature '{feature_id}' not found", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
-        print(f"specs: snapshot failed (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: snapshot failed (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     snapshot = json.loads(body)
@@ -5221,7 +5221,7 @@ def feature_snapshot(project_id, feature_name, as_json=False):
         print(json.dumps(snapshot, indent=2))
         return
 
-    print(f"specs: {snapshot.get('project')}/{snapshot.get('feature')} — {snapshot.get('featureStatus')}")
+    print(f"Signum: {snapshot.get('project')}/{snapshot.get('feature')} — {snapshot.get('featureStatus')}")
     docs = snapshot.get("docs", [])
     if not docs:
         print("  (no documents)")
@@ -5239,12 +5239,12 @@ def list_features(project_id):
     """List all features in a project."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -5255,19 +5255,19 @@ def list_features(project_id):
             headers=headers,
         )
     except ConnectionError as e:
-        print(f"specs: failed to list features — {e}", file=sys.stderr)
+        print(f"Signum: failed to list features — {e}", file=sys.stderr)
         sys.exit(1)
 
     if status_code != 200:
-        print(f"specs: failed to list features (HTTP {status_code}): {body}", file=sys.stderr)
+        print(f"Signum: failed to list features (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     features = json.loads(body)
     if not features:
-        print(f"specs: no features in '{project_id}'")
+        print(f"Signum: no features in '{project_id}'")
         return
 
-    print(f"specs: {len(features)} feature(s) in '{project_id}'")
+    print(f"Signum: {len(features)} feature(s) in '{project_id}'")
     print()
     for f in features:
         name = f.get("name", "?")
@@ -5337,17 +5337,17 @@ def attach_file(file_path, feature_identifier=None):
     (file must live inside a configured specs directory).
     """
     if not os.path.isfile(file_path):
-        print(f"specs: file not found: {file_path}", file=sys.stderr)
+        print(f"Signum: file not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found — run /awolve-spec:login", file=sys.stderr)
+        print("Signum: no config found — run /awolve-spec:login", file=sys.stderr)
         sys.exit(1)
 
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
@@ -5357,7 +5357,7 @@ def attach_file(file_path, feature_identifier=None):
         # Expect "project-id/feature-name"
         if "/" not in feature_identifier:
             print(
-                f"specs: feature identifier must be 'project-id/feature-name', got: {feature_identifier}",
+                f"Signum: feature identifier must be 'project-id/feature-name', got: {feature_identifier}",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -5368,7 +5368,7 @@ def attach_file(file_path, feature_identifier=None):
         proj = config.find_project_for_file(cfg, abs_file)
         if not proj:
             print(
-                f"specs: {file_path} is not inside any configured specs directory — pass <project-id>/<feature-name> explicitly",
+                f"Signum: {file_path} is not inside any configured specs directory — pass <project-id>/<feature-name> explicitly",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -5379,7 +5379,7 @@ def attach_file(file_path, feature_identifier=None):
         parts = rel.split(os.sep)
         if len(parts) < 2:
             print(
-                f"specs: {file_path} must be inside a feature folder (e.g. 001-my-feature/)",
+                f"Signum: {file_path} must be inside a feature folder (e.g. 001-my-feature/)",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -5390,10 +5390,10 @@ def attach_file(file_path, feature_identifier=None):
     try:
         status, body = api_request(list_url, headers=headers)
     except ConnectionError as e:
-        print(f"specs: {e}", file=sys.stderr)
+        print(f"Signum: {e}", file=sys.stderr)
         sys.exit(1)
     if status != 200:
-        print(f"specs: failed to list features (HTTP {status})", file=sys.stderr)
+        print(f"Signum: failed to list features (HTTP {status})", file=sys.stderr)
         sys.exit(1)
 
     features_list = json.loads(body)
@@ -5403,7 +5403,7 @@ def attach_file(file_path, feature_identifier=None):
             feature = f
             break
     if not feature:
-        print(f"specs: feature '{feature_name}' not found in project '{project_id}'", file=sys.stderr)
+        print(f"Signum: feature '{feature_name}' not found in project '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     feature_id = feature["id"]
@@ -5426,7 +5426,7 @@ def attach_file(file_path, feature_identifier=None):
                         headers=headers,
                     )
                     if del_status in (200, 204):
-                        print(f"specs: replaced existing attachment '{upload_filename}'")
+                        print(f"Signum: replaced existing attachment '{upload_filename}'")
                     break
     except Exception:
         pass  # best-effort — upload will still succeed, just may duplicate
@@ -5449,14 +5449,14 @@ def attach_file(file_path, feature_identifier=None):
             msg = e.read().decode("utf-8")[:200]
         except Exception:
             pass
-        print(f"specs: upload failed (HTTP {e.code}): {msg}", file=sys.stderr)
+        print(f"Signum: upload failed (HTTP {e.code}): {msg}", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as e:
-        print(f"specs: upload failed — {e.reason}", file=sys.stderr)
+        print(f"Signum: upload failed — {e.reason}", file=sys.stderr)
         sys.exit(1)
 
     if status not in (200, 201):
-        print(f"specs: upload failed (HTTP {status}): {resp_body[:200]}", file=sys.stderr)
+        print(f"Signum: upload failed (HTTP {status}): {resp_body[:200]}", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -5464,7 +5464,7 @@ def attach_file(file_path, feature_identifier=None):
     except json.JSONDecodeError:
         att = {}
 
-    print(f"specs: uploaded '{os.path.basename(file_path)}' to {project_id}/{feature_name}")
+    print(f"Signum: uploaded '{os.path.basename(file_path)}' to {project_id}/{feature_name}")
     if att.get("id"):
         print(f"  id: {att['id']}")
         print(f"  size: {att.get('sizeBytes', '?')} bytes")
@@ -5478,7 +5478,7 @@ def _upload_attachment(headers, service_url, entity_type, entity_id, file_path, 
     """Shared multipart POST to /api/portal/attachments. Replaces a same-named
     attachment on the entity first so we don't accumulate duplicates (bug #8)."""
     if not os.path.isfile(file_path):
-        print(f"specs: file not found: {file_path}", file=sys.stderr)
+        print(f"Signum: file not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
     upload_filename = os.path.basename(file_path)
@@ -5499,7 +5499,7 @@ def _upload_attachment(headers, service_url, entity_type, entity_id, file_path, 
                             method="DELETE", headers=headers,
                         )
                         if del_sc in (200, 204):
-                            print(f"specs: replaced existing attachment '{upload_filename}'")
+                            print(f"Signum: replaced existing attachment '{upload_filename}'")
                         break
         except Exception:
             pass
@@ -5521,14 +5521,14 @@ def _upload_attachment(headers, service_url, entity_type, entity_id, file_path, 
             msg = e.read().decode("utf-8")[:200]
         except Exception:
             pass
-        print(f"specs: upload failed (HTTP {e.code}): {msg}", file=sys.stderr)
+        print(f"Signum: upload failed (HTTP {e.code}): {msg}", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as e:
-        print(f"specs: upload failed — {e.reason}", file=sys.stderr)
+        print(f"Signum: upload failed — {e.reason}", file=sys.stderr)
         sys.exit(1)
 
     if status not in (200, 201):
-        print(f"specs: upload failed (HTTP {status}): {resp_body[:200]}", file=sys.stderr)
+        print(f"Signum: upload failed (HTTP {status}): {resp_body[:200]}", file=sys.stderr)
         sys.exit(1)
     try:
         return json.loads(resp_body)
@@ -5565,20 +5565,20 @@ def attach_to_bug(project_id, bug_ref, file_path):
     initial screenshots; this command lets you add more after the fact."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     bug_id, bug = _resolve_bug_id(headers, service_url, project_id, bug_ref)
     if not bug_id:
-        print(f"specs: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
     att = _upload_attachment(headers, service_url, "bug", bug_id, file_path)
-    print(f"specs: uploaded '{os.path.basename(file_path)}' to bug #{bug.get('number')}")
+    print(f"Signum: uploaded '{os.path.basename(file_path)}' to bug #{bug.get('number')}")
     if att.get("id"):
         print(f"  id: {att['id']}")
         print(f"  size: {att.get('sizeBytes', '?')} bytes")
@@ -5588,20 +5588,20 @@ def attach_to_backlog(project_id, backlog_ref, file_path):
     """Upload a file as an attachment on a backlog item."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     item_id, item = _resolve_backlog_id(headers, service_url, project_id, backlog_ref)
     if not item_id:
-        print(f"specs: backlog '{backlog_ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: backlog '{backlog_ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
     att = _upload_attachment(headers, service_url, "backlog", item_id, file_path)
-    print(f"specs: uploaded '{os.path.basename(file_path)}' to backlog #{item.get('number')}")
+    print(f"Signum: uploaded '{os.path.basename(file_path)}' to backlog #{item.get('number')}")
     if att.get("id"):
         print(f"  id: {att['id']}")
         print(f"  size: {att.get('sizeBytes', '?')} bytes")
@@ -5610,15 +5610,15 @@ def attach_to_backlog(project_id, backlog_ref, file_path):
 def list_attachments(entity_type, entity_id, as_json=False):
     """List attachments on a feature/bug/backlog entity (by uuid)."""
     if entity_type not in ("feature", "bug", "backlog"):
-        print(f"specs: invalid entity-type '{entity_type}' (use feature|bug|backlog)", file=sys.stderr)
+        print(f"Signum: invalid entity-type '{entity_type}' (use feature|bug|backlog)", file=sys.stderr)
         sys.exit(1)
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
@@ -5629,16 +5629,16 @@ def list_attachments(entity_type, entity_id, as_json=False):
     )
     sc, body = api_request(url, headers=headers)
     if sc != 200:
-        print(f"specs: list failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: list failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
     atts = json.loads(body)
     if as_json:
         print(json.dumps(atts, indent=2, ensure_ascii=False))
         return
     if not atts:
-        print(f"specs: no attachments on {entity_type} {entity_id}")
+        print(f"Signum: no attachments on {entity_type} {entity_id}")
         return
-    print(f"specs: {len(atts)} attachment(s) on {entity_type} {entity_id}")
+    print(f"Signum: {len(atts)} attachment(s) on {entity_type} {entity_id}")
     for a in atts:
         size = a.get("sizeBytes", "?")
         print(f"  · {a.get('filename', '?')}  ({size} bytes, {a.get('contentType', '?')})")
@@ -5650,11 +5650,11 @@ def _fetch_attachment(attachment_id):
     Shared by download_attachment and the test-results evidence saver."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
@@ -5674,10 +5674,10 @@ def _fetch_attachment(attachment_id):
             msg = e.read().decode("utf-8")[:200]
         except Exception:
             pass
-        print(f"specs: download failed (HTTP {e.code}): {msg}", file=sys.stderr)
+        print(f"Signum: download failed (HTTP {e.code}): {msg}", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as e:
-        print(f"specs: download failed — {e.reason}", file=sys.stderr)
+        print(f"Signum: download failed — {e.reason}", file=sys.stderr)
         sys.exit(1)
     return data, server_name
 
@@ -5690,57 +5690,57 @@ def download_attachment(attachment_id, out_path):
     target = out_path
     if os.path.isdir(out_path):
         if not server_name:
-            print(f"specs: out_path '{out_path}' is a directory but server didn't return a filename — pass a full file path", file=sys.stderr)
+            print(f"Signum: out_path '{out_path}' is a directory but server didn't return a filename — pass a full file path", file=sys.stderr)
             sys.exit(1)
         target = os.path.join(out_path, server_name)
     with open(target, "wb") as f:
         f.write(data)
-    print(f"specs: wrote {len(data)} bytes → {target}")
+    print(f"Signum: wrote {len(data)} bytes → {target}")
 
 
 def delete_attachment(attachment_id):
     """Delete an attachment by id."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     url = f"{service_url}/api/portal/attachments/{attachment_id}"
     sc, body = api_request(url, method="DELETE", headers=headers)
     if sc not in (200, 204):
-        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
-    print(f"specs: deleted attachment {attachment_id}")
+    print(f"Signum: deleted attachment {attachment_id}")
 
 
 def delete_bug(project_id, bug_ref):
     """Soft-delete a bug (internal users only). Mirrors backlog-delete."""
     cfg = config.read_config()
     if not cfg:
-        print("specs: no config found", file=sys.stderr)
+        print("Signum: no config found", file=sys.stderr)
         sys.exit(1)
     headers = auth.get_headers()
     if not headers:
-        print("specs: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
         sys.exit(1)
     service_url = cfg["service_url"]
 
     bug_id, bug = _resolve_bug_id(headers, service_url, project_id, bug_ref)
     if not bug_id:
-        print(f"specs: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
+        print(f"Signum: bug '{bug_ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
 
     url = f"{service_url}/api/portal/bugs/{bug_id}"
     sc, body = api_request(url, method="DELETE", headers=headers)
     if sc not in (200, 204):
-        print(f"specs: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
+        print(f"Signum: delete failed (HTTP {sc}): {body[:200] if body else ''}", file=sys.stderr)
         sys.exit(1)
-    print(f"specs: deleted bug #{bug.get('number')} — {bug.get('title', '')}")
+    print(f"Signum: deleted bug #{bug.get('number')} — {bug.get('title', '')}")
 
 
 # ---------------------------------------------------------------------------
@@ -5764,22 +5764,22 @@ def _test_request(path, method="GET", data=None):
     try:
         status, body = api_request(f"{service_url}{path}", method=method, headers=h, data=data)
     except ConnectionError as e:
-        print(f"specs: request failed — {e}", file=sys.stderr)
+        print(f"Signum: request failed — {e}", file=sys.stderr)
         sys.exit(1)
     if status not in (200, 201):
-        print(f"specs: HTTP {status}: {body}", file=sys.stderr)
+        print(f"Signum: HTTP {status}: {body}", file=sys.stderr)
         sys.exit(1)
     return json.loads(body) if body else {}
 
 
 def test_run_create(project, name, run_type, description, start, end):
     if run_type not in TEST_RUN_TYPES:
-        print(f"specs: type must be one of {', '.join(TEST_RUN_TYPES)}", file=sys.stderr)
+        print(f"Signum: type must be one of {', '.join(TEST_RUN_TYPES)}", file=sys.stderr)
         sys.exit(1)
     run = _test_request(f"/api/portal/projects/{project}/test-runs", "POST", {
         "name": name, "type": run_type, "description": description, "targetStart": start, "targetEnd": end,
     })
-    print(f"specs: test run #{run.get('number','?')} created — {name} [{run_type}]")
+    print(f"Signum: test run #{run.get('number','?')} created — {name} [{run_type}]")
     print(f"  id: {run.get('id')}")
 
 
@@ -5791,9 +5791,9 @@ def test_run_update(run_id, name, description, status, start, end):
     if start is not None: body["targetStart"] = start
     if end is not None: body["targetEnd"] = end
     if not body:
-        print("specs: nothing to update (provide --name/--description/--status/--start/--end)", file=sys.stderr); sys.exit(1)
+        print("Signum: nothing to update (provide --name/--description/--status/--start/--end)", file=sys.stderr); sys.exit(1)
     run = _test_request(f"/api/portal/test-runs/{run_id}", "PATCH", body)
-    print(f"specs: test run #{run.get('number','?')} updated — {run.get('name')} [{run.get('status')}]")
+    print(f"Signum: test run #{run.get('number','?')} updated — {run.get('name')} [{run.get('status')}]")
     s, e = run.get("targetStart"), run.get("targetEnd")
     if s or e:
         print(f"  window: {(s or '—')[:10]} → {(e or '—')[:10]}")
@@ -5803,7 +5803,7 @@ def test_run_list(project, run_type):
     q = f"?type={run_type}" if run_type else ""
     runs = _test_request(f"/api/portal/projects/{project}/test-runs{q}")
     if not runs:
-        print("specs: no test runs")
+        print("Signum: no test runs")
         return
     for r in runs:
         print(f"  #{r['number']:<3} [{r['type']:<11}] {r['status']:<8} {r['name']}  "
@@ -5849,7 +5849,7 @@ def test_section_add(run_id, name, position):
     if position is not None:
         data["position"] = position
     s = _test_request(f"/api/portal/test-runs/{run_id}/sections", "POST", data)
-    print(f"specs: section '{name}' added — id={s.get('id')}")
+    print(f"Signum: section '{name}' added — id={s.get('id')}")
 
 
 def test_case_add(run_id, section_id, key, what, expected, feature_id, prerequisite=None, prereq_cases=None, title=None):
@@ -5863,7 +5863,7 @@ def test_case_add(run_id, section_id, key, what, expected, feature_id, prerequis
     if prereq_cases:
         data["prerequisiteKeys"] = prereq_cases
     c = _test_request(f"/api/portal/test-runs/{run_id}/cases", "POST", data)
-    print(f"specs: case {key} added — id={c.get('id')}")
+    print(f"Signum: case {key} added — id={c.get('id')}")
 
 
 def _parse_matrix(path):
@@ -5924,11 +5924,11 @@ def _parse_matrix(path):
 def test_import_cases(run_id, path):
     rows = _parse_matrix(path)
     if not rows:
-        print("specs: no rows parsed from the matrix (need columns: section, case_id, what_you_do, expected)", file=sys.stderr)
+        print("Signum: no rows parsed from the matrix (need columns: section, case_id, what_you_do, expected)", file=sys.stderr)
         sys.exit(1)
     res = _test_request(f"/api/portal/test-runs/{run_id}/import", "POST", {"cases": rows})
     extra = f", {res['rolesCreated']} new roles" if res.get("rolesCreated") else ""
-    print(f"specs: imported — {res.get('casesNew',0)} new, {res.get('casesUpdated',0)} updated, "
+    print(f"Signum: imported — {res.get('casesNew',0)} new, {res.get('casesUpdated',0)} updated, "
           f"{res.get('sectionsCreated',0)} new sections{extra}")
 
 
@@ -5937,7 +5937,7 @@ def test_tester_add(run_id, name, user_email, as_token, email=None):
         data = {"kind": "user", "email": user_email}
     else:
         if not name:
-            print("specs: token tester needs --name", file=sys.stderr)
+            print("Signum: token tester needs --name", file=sys.stderr)
             sys.exit(1)
         data = {"kind": "token", "displayName": name}
         if email:
@@ -5946,10 +5946,10 @@ def test_tester_add(run_id, name, user_email, as_token, email=None):
     if t.get("link"):
         cfg = config.read_config()
         base = cfg["service_url"] if cfg else ""
-        print(f"specs: token tester '{t.get('displayName')}' added")
+        print(f"Signum: token tester '{t.get('displayName')}' added")
         print(f"  link: {base}{t['link']}")
     else:
-        print(f"specs: tester '{t.get('displayName')}' added — id={t.get('id')}")
+        print(f"Signum: tester '{t.get('displayName')}' added — id={t.get('id')}")
 
 
 def _tally_str(tally):
@@ -6074,10 +6074,10 @@ def test_results(run_id, execution=None, non_ok=False, as_json=False, download_d
 
 def test_signoff(run_id, decision, note):
     if decision not in TEST_SIGNOFF_DECISIONS:
-        print(f"specs: decision must be one of {', '.join(TEST_SIGNOFF_DECISIONS)}", file=sys.stderr)
+        print(f"Signum: decision must be one of {', '.join(TEST_SIGNOFF_DECISIONS)}", file=sys.stderr)
         sys.exit(1)
     s = _test_request(f"/api/portal/test-runs/{run_id}/signoff", "PUT", {"decision": decision, "note": note})
-    print(f"specs: signed off test run — {s.get('decision')}")
+    print(f"Signum: signed off test run — {s.get('decision')}")
 
 
 def test_reset(run_id, tester_id=None, execution=None):
@@ -6088,7 +6088,7 @@ def test_reset(run_id, tester_id=None, execution=None):
     r = _test_request(f"/api/portal/test-runs/{run_id}/reset", "POST", data)
     scope = f"tester {tester_id}" if tester_id else "whole run"
     extra = ", sign-off cleared" if r.get("signoffCleared") else ""
-    print(f"specs: reset {scope} — cleared {r.get('results',0)} result(s), {r.get('photos',0)} photo(s); "
+    print(f"Signum: reset {scope} — cleared {r.get('results',0)} result(s), {r.get('photos',0)} photo(s); "
           f"{r.get('testersReset',0)} tester(s) re-started{extra}")
 
 
@@ -6096,7 +6096,7 @@ def test_reset(run_id, tester_id=None, execution=None):
 def test_exec_list(run_id):
     rows = _test_request(f"/api/portal/test-runs/{run_id}/executions")
     if not rows:
-        print("specs: no runs"); return
+        print("Signum: no runs"); return
     for e in rows:
         started = (e.get("startedAt") or "")[:10]
         print(f"  run #{e.get('number')}  {e.get('status'):<8} {started}  {e.get('label') or ''}  id={e.get('id')}")
@@ -6106,18 +6106,18 @@ def test_exec_start(run_id, label=None):
     data = {}
     if label: data["label"] = label
     e = _test_request(f"/api/portal/test-runs/{run_id}/executions", "POST", data)
-    print(f"specs: started run #{e.get('number')}{(' ' + e['label']) if e.get('label') else ''} — id={e.get('id')}")
+    print(f"Signum: started run #{e.get('number')}{(' ' + e['label']) if e.get('label') else ''} — id={e.get('id')}")
 
 
 def test_exec_close(exec_id):
     e = _test_request(f"/api/portal/executions/{exec_id}", "PATCH", {"status": "closed"})
-    print(f"specs: closed run #{e.get('number')}")
+    print(f"Signum: closed run #{e.get('number')}")
 
 
 # ── runs / sections / cases — full CRUD parity with the API ──
 def test_run_delete(run_id):
     _test_request(f"/api/portal/test-runs/{run_id}", "DELETE")
-    print("specs: test run deleted")
+    print("Signum: test run deleted")
 
 
 def test_section_update(section_id, name, position):
@@ -6125,20 +6125,20 @@ def test_section_update(section_id, name, position):
     if name is not None: body["name"] = name
     if position is not None: body["position"] = position
     if not body:
-        print("specs: nothing to update (--name / --position)", file=sys.stderr); sys.exit(1)
+        print("Signum: nothing to update (--name / --position)", file=sys.stderr); sys.exit(1)
     s = _test_request(f"/api/portal/sections/{section_id}", "PATCH", body)
-    print(f"specs: section updated — {s.get('name')}")
+    print(f"Signum: section updated — {s.get('name')}")
 
 
 def test_section_delete(section_id):
     _test_request(f"/api/portal/sections/{section_id}", "DELETE")
-    print("specs: section deleted")
+    print("Signum: section deleted")
 
 
 def test_section_reorder(run_id, ids_csv):
     order = [x.strip() for x in ids_csv.split(",") if x.strip()]
     _test_request(f"/api/portal/test-runs/{run_id}/sections", "PATCH", {"order": order})
-    print(f"specs: {len(order)} sections reordered")
+    print(f"Signum: {len(order)} sections reordered")
 
 
 def test_case_update(case_id, vals):
@@ -6153,14 +6153,14 @@ def test_case_update(case_id, vals):
     if vals.get("--prereq-cases") is not None: body["prerequisiteKeys"] = vals["--prereq-cases"]
     if vals.get("--position"): body["position"] = int(vals["--position"])
     if not body:
-        print("specs: nothing to update", file=sys.stderr); sys.exit(1)
+        print("Signum: nothing to update", file=sys.stderr); sys.exit(1)
     c = _test_request(f"/api/portal/cases/{case_id}", "PATCH", body)
-    print(f"specs: case {c.get('caseKey')} updated")
+    print(f"Signum: case {c.get('caseKey')} updated")
 
 
 def test_case_delete(case_id):
     _test_request(f"/api/portal/cases/{case_id}", "DELETE")
-    print("specs: case deleted")
+    print("Signum: case deleted")
 
 
 # ── roles (spec 018) ──
@@ -6169,18 +6169,18 @@ def test_role_add(run_id, name, description=None, key=None):
     if description: data["description"] = description
     if key: data["key"] = key
     r = _test_request(f"/api/portal/test-runs/{run_id}/roles", "POST", data)
-    print(f"specs: role '{r.get('name')}' added — id={r.get('id')} key={r.get('key')}")
+    print(f"Signum: role '{r.get('name')}' added — id={r.get('id')} key={r.get('key')}")
 
 
 def test_role_seed(run_id):
     r = _test_request(f"/api/portal/test-runs/{run_id}/roles", "POST", {"seed": True})
-    print(f"specs: seeded {r.get('created', 0)} role(s) from project templates")
+    print(f"Signum: seeded {r.get('created', 0)} role(s) from project templates")
 
 
 def test_role_list(run_id):
     roles = _test_request(f"/api/portal/test-runs/{run_id}/roles")
     if not roles:
-        print("specs: no roles"); return
+        print("Signum: no roles"); return
     for r in roles:
         desc = f" — {r['description']}" if r.get("description") else ""
         print(f"  {str(r.get('key')):<20} {r.get('name')}{desc}  id={r.get('id')}")
@@ -6192,20 +6192,20 @@ def test_role_rename(role_id, name=None, description=None, key=None):
     if description is not None: body["description"] = description
     if key: body["key"] = key
     if not body:
-        print("specs: nothing to update (--name / --description / --key)", file=sys.stderr); sys.exit(1)
+        print("Signum: nothing to update (--name / --description / --key)", file=sys.stderr); sys.exit(1)
     r = _test_request(f"/api/portal/roles/{role_id}", "PATCH", body)
-    print(f"specs: role updated — {r.get('name')}")
+    print(f"Signum: role updated — {r.get('name')}")
 
 
 def test_role_remove(role_id):
     _test_request(f"/api/portal/roles/{role_id}", "DELETE")
-    print("specs: role removed")
+    print("Signum: role removed")
 
 
 def test_case_roles(case_id, role_ids_csv):
     ids = [x.strip() for x in role_ids_csv.split(",") if x.strip()]
     _test_request(f"/api/portal/cases/{case_id}/roles", "PUT", {"roleIds": ids})
-    print(f"specs: set {len(ids)} role(s) on case")
+    print(f"Signum: set {len(ids)} role(s) on case")
 
 
 def test_role_identity_set(run_id, role_id, scope, kind, scope_ref=None, environment=None, account_ref=None, template=None):
@@ -6215,7 +6215,7 @@ def test_role_identity_set(run_id, role_id, scope, kind, scope_ref=None, environ
     if account_ref: data["accountRef"] = account_ref
     if template: data["generateTemplate"] = template
     b = _test_request(f"/api/portal/test-runs/{run_id}/role-identities", "POST", data)
-    print(f"specs: identity binding added — id={b.get('id')} ({scope}/{kind})")
+    print(f"Signum: identity binding added — id={b.get('id')} ({scope}/{kind})")
 
 
 def test_role_template_add(project, name, description=None, key=None):
@@ -6223,13 +6223,13 @@ def test_role_template_add(project, name, description=None, key=None):
     if description: data["description"] = description
     if key: data["key"] = key
     r = _test_request(f"/api/portal/projects/{project}/test-roles", "POST", data)
-    print(f"specs: project role template '{r.get('name')}' added — key={r.get('key')}")
+    print(f"Signum: project role template '{r.get('name')}' added — key={r.get('key')}")
 
 
 def test_role_template_list(project):
     roles = _test_request(f"/api/portal/projects/{project}/test-roles")
     if not roles:
-        print("specs: no project role templates"); return
+        print("Signum: no project role templates"); return
     for r in roles:
         print(f"  {str(r.get('key')):<20} {r.get('name')}")
 
@@ -6238,12 +6238,12 @@ def test_role_template_list(project):
 def test_retest(case_id, note=None):
     r = _test_request(f"/api/portal/cases/{case_id}/retest", "POST", {"note": note})
     extra = f", {len(r.get('skipped', []))} without an email" if r.get("skipped") else ""
-    print(f"specs: re-test requested — {r.get('notified', 0)} tester(s) emailed{extra}")
+    print(f"Signum: re-test requested — {r.get('notified', 0)} tester(s) emailed{extra}")
 
 
 def test_retest_clear(case_id):
     _test_request(f"/api/portal/cases/{case_id}/retest", "DELETE")
-    print("specs: re-test request cleared")
+    print("Signum: re-test request cleared")
 
 
 def test_result_record(case_id, status, comment, bug, execution=None):
@@ -6252,14 +6252,14 @@ def test_result_record(case_id, status, comment, bug, execution=None):
     if bug is not None: body["bugNumber"] = bug
     if execution: body["executionId"] = execution
     _test_request(f"/api/portal/cases/{case_id}/results", "POST", body)
-    print(f"specs: result recorded — {status}")
+    print(f"Signum: result recorded — {status}")
 
 
 # ── testers ──
 def test_tester_list(run_id):
     testers = _test_request(f"/api/portal/test-runs/{run_id}/testers")
     if not testers:
-        print("specs: no testers"); return
+        print("Signum: no testers"); return
     for t in testers:
         extra = " (revoked)" if t.get("revokedAt") else ""
         print(f"  {t.get('displayName',''):<24} [{t.get('kind','?'):<5}] recorded={t.get('recorded',0)}  id={t.get('id')}{extra}")
@@ -6270,23 +6270,23 @@ def test_tester_update(tester_id, revoke, reissue):
     if revoke: body["revoke"] = True
     if reissue: body["reissue"] = True
     if not body:
-        print("specs: pass --revoke or --reissue", file=sys.stderr); sys.exit(1)
+        print("Signum: pass --revoke or --reissue", file=sys.stderr); sys.exit(1)
     t = _test_request(f"/api/portal/testers/{tester_id}", "PATCH", body)
-    print(f"specs: tester '{t.get('displayName')}' updated")
+    print(f"Signum: tester '{t.get('displayName')}' updated")
     if t.get("link"):
         print(f"  link: {t['link']}")
 
 
 def test_tester_delete(tester_id):
     _test_request(f"/api/portal/testers/{tester_id}", "DELETE")
-    print("specs: tester removed")
+    print("Signum: tester removed")
 
 
 # ── case reference images ──
 def test_image_list(case_id):
     imgs = _test_request(f"/api/portal/cases/{case_id}/attachments")
     if not imgs:
-        print("specs: no reference images"); return
+        print("Signum: no reference images"); return
     for im in imgs:
         side = im.get("target") or "expect"
         print(f"  [{side:<6}] {im.get('caption') or im.get('filename')}  id={im.get('id')}")
@@ -6297,20 +6297,20 @@ def test_image_update(case_id, att_id, caption, target):
     if caption is not None: body["caption"] = caption
     if target is not None: body["target"] = target
     if not body:
-        print("specs: pass --caption or --target", file=sys.stderr); sys.exit(1)
+        print("Signum: pass --caption or --target", file=sys.stderr); sys.exit(1)
     _test_request(f"/api/portal/cases/{case_id}/attachments/{att_id}", "PATCH", body)
-    print("specs: image updated")
+    print("Signum: image updated")
 
 
 def test_image_delete(case_id, att_id):
     _test_request(f"/api/portal/cases/{case_id}/attachments/{att_id}", "DELETE")
-    print("specs: image deleted")
+    print("Signum: image deleted")
 
 
 def test_image_add(case_id, file_path, caption, target):
     import uuid as _uuid, mimetypes as _mt
     if not os.path.isfile(file_path):
-        print(f"specs: file not found: {file_path}", file=sys.stderr); sys.exit(1)
+        print(f"Signum: file not found: {file_path}", file=sys.stderr); sys.exit(1)
     _, headers, service_url = _init_and_auth()
     boundary = f"----awolve-spec-{_uuid.uuid4().hex}"
     fname = os.path.basename(file_path)
@@ -6337,11 +6337,11 @@ def test_image_add(case_id, file_path, caption, target):
         with urllib.request.urlopen(req, timeout=120) as resp:
             status, rb = resp.status, resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
-        print(f"specs: upload failed (HTTP {e.code}): {e.read().decode('utf-8')[:200]}", file=sys.stderr); sys.exit(1)
+        print(f"Signum: upload failed (HTTP {e.code}): {e.read().decode('utf-8')[:200]}", file=sys.stderr); sys.exit(1)
     if status not in (200, 201):
-        print(f"specs: upload failed (HTTP {status})", file=sys.stderr); sys.exit(1)
+        print(f"Signum: upload failed (HTTP {status})", file=sys.stderr); sys.exit(1)
     im = json.loads(rb) if rb else {}
-    print(f"specs: image added — id={im.get('id')} [{im.get('target') or 'expect'}]")
+    print(f"Signum: image added — id={im.get('id')} [{im.get('target') or 'expect'}]")
 
 
 def _parse_flags(rest, value_flags, bool_flags=()):
@@ -6449,11 +6449,11 @@ def handle_test(args):
         test_result_record(pos[0], vals["--status"], vals.get("--comment"), vals.get("--bug"), vals.get("--execution"))
     elif sub == "reset-run":
         if not pos: print("Usage: specs-cli.py test reset-run <run-id> --yes [--execution <id>]   (deletes ALL results + photos for the run instance, re-starts every tester, clears sign-off)", file=sys.stderr); sys.exit(1)
-        if "--yes" not in bools: print("specs: reset-run is destructive (deletes ALL results + photos, clears sign-off) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
+        if "--yes" not in bools: print("Signum: reset-run is destructive (deletes ALL results + photos, clears sign-off) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
         test_reset(pos[0], None, vals.get("--execution"))
     elif sub == "reset-tester":
         if len(pos) < 2: print("Usage: specs-cli.py test reset-tester <run-id> <tester-id> --yes [--execution <id>]   (deletes that tester's results + photos in the run instance, re-starts them)", file=sys.stderr); sys.exit(1)
-        if "--yes" not in bools: print("specs: reset-tester is destructive (deletes that tester's results + photos) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
+        if "--yes" not in bools: print("Signum: reset-tester is destructive (deletes that tester's results + photos) — re-run with --yes to confirm", file=sys.stderr); sys.exit(1)
         test_reset(pos[0], pos[1], vals.get("--execution"))
     elif sub == "tester-list":
         if not pos: print("Usage: specs-cli.py test tester-list <run-id>", file=sys.stderr); sys.exit(1)
@@ -6545,16 +6545,16 @@ def _feedback_url(service_url, project_id, *parts):
 
 def _feedback_fail(status_code, body, what):
     if status_code == 403:
-        print(f"specs: project admin access is required to {what}", file=sys.stderr)
+        print(f"Signum: project admin access is required to {what}", file=sys.stderr)
     elif status_code == 404:
-        print(f"specs: not found — could not {what}: {body[:200]}", file=sys.stderr)
+        print(f"Signum: not found — could not {what}: {body[:200]}", file=sys.stderr)
     else:
         try:
             data = json.loads(body)
             msg = data.get("message") or data.get("error") or body[:300]
         except Exception:
             msg = body[:300]
-        print(f"specs: could not {what} (HTTP {status_code}): {msg}", file=sys.stderr)
+        print(f"Signum: could not {what} (HTTP {status_code}): {msg}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -6562,7 +6562,7 @@ def _fetch_feedback_users(headers, service_url, project_id):
     try:
         status_code, body = api_request(_feedback_url(service_url, project_id), headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to fetch feedback users — {e}", file=sys.stderr)
+        print(f"Signum: failed to fetch feedback users — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         _feedback_fail(status_code, body, "list feedback users")
@@ -6581,11 +6581,11 @@ def _resolve_feedback_user(headers, service_url, project_id, ref):
         return prefix[0]
     matches = exact or prefix
     if not matches:
-        print(f"specs: no feedback user matches '{ref}' in '{project_id}'", file=sys.stderr)
+        print(f"Signum: no feedback user matches '{ref}' in '{project_id}'", file=sys.stderr)
         if users:
             print("  existing: " + ", ".join(f"{u['name']} ({u['id'][:8]})" for u in users), file=sys.stderr)
     else:
-        print(f"specs: '{ref}' is ambiguous — " + ", ".join(f"{u['name']} ({u['id'][:8]})" for u in matches), file=sys.stderr)
+        print(f"Signum: '{ref}' is ambiguous — " + ", ".join(f"{u['name']} ({u['id'][:8]})" for u in matches), file=sys.stderr)
     sys.exit(1)
 
 
@@ -6615,9 +6615,9 @@ def list_feedback_users(project_id, as_json=False):
         print(json.dumps(users, indent=2))
         return
     if not users:
-        print(f"specs: no feedback users in '{project_id}' — create one with feedback-user-create")
+        print(f"Signum: no feedback users in '{project_id}' — create one with feedback-user-create")
         return
-    print(f"specs: {len(users)} feedback user(s) in '{project_id}'\n")
+    print(f"Signum: {len(users)} feedback user(s) in '{project_id}'\n")
     for u in users:
         _print_feedback_user(u)
         print()
@@ -6628,12 +6628,12 @@ def create_feedback_user(project_id, name):
     try:
         status_code, body = api_request(_feedback_url(cfg["service_url"], project_id), method="POST", headers=headers, data={"name": name})
     except ConnectionError as e:
-        print(f"specs: failed to create feedback user — {e}", file=sys.stderr)
+        print(f"Signum: failed to create feedback user — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         _feedback_fail(status_code, body, "create the feedback user")
     u = json.loads(body)
-    print(f"specs: created feedback user '{u['name']}' in '{project_id}' (id {u['id']})")
+    print(f"Signum: created feedback user '{u['name']}' in '{project_id}' (id {u['id']})")
     print(f"  next: specs-cli.py feedback-key-create {project_id} {u['id'][:8]} --label \"<app and environment>\"")
 
 
@@ -6653,19 +6653,19 @@ def update_feedback_user(project_id, ref, name=None, origins=None, per_minute=No
         elif raw.isdigit() and int(raw) > 0:
             patch[key] = int(raw)
         else:
-            print(f"specs: {key} must be a positive integer or 'default'", file=sys.stderr)
+            print(f"Signum: {key} must be a positive integer or 'default'", file=sys.stderr)
             sys.exit(1)
     if not patch:
-        print("specs: nothing to update — pass --name, --origins, --per-minute or --per-hour", file=sys.stderr)
+        print("Signum: nothing to update — pass --name, --origins, --per-minute or --per-hour", file=sys.stderr)
         sys.exit(1)
     try:
         status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"]), method="PATCH", headers=headers, data=patch)
     except ConnectionError as e:
-        print(f"specs: failed to update feedback user — {e}", file=sys.stderr)
+        print(f"Signum: failed to update feedback user — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         _feedback_fail(status_code, body, "update the feedback user")
-    print(f"specs: updated feedback user '{u['name']}'")
+    print(f"Signum: updated feedback user '{u['name']}'")
     _print_feedback_user(json.loads(body))
 
 
@@ -6675,12 +6675,12 @@ def delete_feedback_user(project_id, ref):
     try:
         status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"]), method="DELETE", headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to delete feedback user — {e}", file=sys.stderr)
+        print(f"Signum: failed to delete feedback user — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         _feedback_fail(status_code, body, "delete the feedback user")
     n = json.loads(body).get("revokedKeys", 0)
-    print(f"specs: deleted feedback user '{u['name']}' — {n} key(s) revoked; its reports stay as they are")
+    print(f"Signum: deleted feedback user '{u['name']}' — {n} key(s) revoked; its reports stay as they are")
 
 
 def create_feedback_key(project_id, ref, label=None):
@@ -6689,12 +6689,12 @@ def create_feedback_key(project_id, ref, label=None):
     try:
         status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"], "keys"), method="POST", headers=headers, data={"label": label} if label else {})
     except ConnectionError as e:
-        print(f"specs: failed to create key — {e}", file=sys.stderr)
+        print(f"Signum: failed to create key — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
         _feedback_fail(status_code, body, "create the key")
     k = json.loads(body)
-    print(f"specs: new key for feedback user '{u['name']}'" + (f" ({k['label']})" if k.get("label") else ""))
+    print(f"Signum: new key for feedback user '{u['name']}'" + (f" ({k['label']})" if k.get("label") else ""))
     print()
     print(f"  {k['key']}")
     print()
@@ -6709,9 +6709,9 @@ def revoke_feedback_key(project_id, ref, key_ref):
     match = [k for k in keys if k["id"] == key_ref or k["id"].startswith(key_ref) or k["keyPrefix"].startswith(key_ref.rstrip("."))]
     if len(match) != 1:
         if not match:
-            print(f"specs: no active key of '{u['name']}' matches '{key_ref}'", file=sys.stderr)
+            print(f"Signum: no active key of '{u['name']}' matches '{key_ref}'", file=sys.stderr)
         else:
-            print(f"specs: '{key_ref}' matches several keys — use the id", file=sys.stderr)
+            print(f"Signum: '{key_ref}' matches several keys — use the id", file=sys.stderr)
         for k in keys:
             print(f"  {k['keyPrefix']}  id {k['id']}", file=sys.stderr)
         sys.exit(1)
@@ -6719,11 +6719,11 @@ def revoke_feedback_key(project_id, ref, key_ref):
     try:
         status_code, body = api_request(_feedback_url(cfg["service_url"], project_id, u["id"], "keys", k["id"]), method="DELETE", headers=headers)
     except ConnectionError as e:
-        print(f"specs: failed to revoke key — {e}", file=sys.stderr)
+        print(f"Signum: failed to revoke key — {e}", file=sys.stderr)
         sys.exit(1)
     if status_code != 200:
         _feedback_fail(status_code, body, "revoke the key")
-    print(f"specs: revoked key {k['keyPrefix']} of feedback user '{u['name']}' — the app's requests with it fail from now on")
+    print(f"Signum: revoked key {k['keyPrefix']} of feedback user '{u['name']}' — the app's requests with it fail from now on")
 
 
 def _split_flags(args, value_flags):
@@ -6734,7 +6734,7 @@ def _split_flags(args, value_flags):
         a = args[i]
         if a in value_flags:
             if i + 1 >= len(args):
-                print(f"specs: {a} requires a value", file=sys.stderr)
+                print(f"Signum: {a} requires a value", file=sys.stderr)
                 sys.exit(1)
             vals[a] = args[i + 1]
             i += 2
@@ -6802,7 +6802,7 @@ def main():
                 try:
                     limit_arg = int(args[i + 1])
                 except ValueError:
-                    print(f"specs: invalid --limit '{args[i + 1]}'", file=sys.stderr)
+                    print(f"Signum: invalid --limit '{args[i + 1]}'", file=sys.stderr)
                     sys.exit(1)
                 i += 2
             elif a == "--json":
@@ -6820,7 +6820,7 @@ def main():
             print("Usage: specs-cli.py log <project-id|--all> [--since DUR] [--author EMAIL] [--entity TYPE] [--limit N] [--json] [--since-last-visit] [--mark-read]", file=sys.stderr)
             sys.exit(1)
         if all_projects and project_id is not None:
-            print("specs: cannot combine --all with a project id", file=sys.stderr)
+            print("Signum: cannot combine --all with a project id", file=sys.stderr)
             sys.exit(1)
 
         specs_log(
@@ -6866,7 +6866,7 @@ def main():
             elif "--merged" in args:
                 i = args.index("--merged")
                 if i + 1 >= len(args):
-                    print("specs: --merged requires a file path", file=sys.stderr)
+                    print("Signum: --merged requires a file path", file=sys.stderr)
                     sys.exit(1)
                 conflict_resolve(ref, "merged", merged_file=args[i + 1])
             else:
@@ -6903,7 +6903,7 @@ def main():
             if a == "--since" and i + 1 < len(args): since = args[i + 1]
             if a == "--kind" and i + 1 < len(args): kind = args[i + 1]
         if kind is not None and kind not in ("bug", "backlog"):
-            print("specs: --kind must be bug or backlog", file=sys.stderr)
+            print("Signum: --kind must be bug or backlog", file=sys.stderr)
             sys.exit(1)
         my_daily(since=since, kind=kind, as_json="--json" in args)
     elif cmd == "my-weekly":
@@ -7003,7 +7003,7 @@ def main():
                 continue
             if a in ("--tags", "--add-tag", "--remove-tag"):
                 if i + 1 >= len(args):
-                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
                     sys.exit(1)
                 if a == "--tags":
                     tag_edit["replace"] = args[i + 1]
@@ -7015,13 +7015,13 @@ def main():
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
-                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
                     sys.exit(1)
                 fields[flag_map[a]] = args[i + 1]
                 skip_next = True
                 continue
             if a.startswith("--"):
-                print(f"specs: unknown flag '{a}' for update-bug", file=sys.stderr)
+                print(f"Signum: unknown flag '{a}' for update-bug", file=sys.stderr)
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
@@ -7030,13 +7030,13 @@ def main():
             print(f"  Deployment stages: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
-            print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
+            print("Signum: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
-            print("specs: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
+            print("Signum: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
-            print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
+            print("Signum: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
             sys.exit(1)
         validate_timing_fields(fields)
         validate_deployment_fields(fields)
@@ -7150,7 +7150,7 @@ def main():
             if a.startswith("--"):
                 if a in VALUE_FLAGS:
                     if i + 1 >= len(args):
-                        print(f"specs: {a} requires a value", file=sys.stderr)
+                        print(f"Signum: {a} requires a value", file=sys.stderr)
                         sys.exit(1)
                     if a == "--color":
                         color_val = args[i + 1]
@@ -7178,7 +7178,7 @@ def main():
             if a.startswith("--"):
                 if a in VALUE_FLAGS:
                     if i + 1 >= len(args):
-                        print(f"specs: {a} requires a value", file=sys.stderr)
+                        print(f"Signum: {a} requires a value", file=sys.stderr)
                         sys.exit(1)
                     if a == "--name":
                         name_val = args[i + 1]
@@ -7315,7 +7315,7 @@ def main():
                 continue
             if a in ("--tags", "--add-tag", "--remove-tag"):
                 if i + 1 >= len(args):
-                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
                     sys.exit(1)
                 if a == "--tags":
                     tag_edit["replace"] = args[i + 1]
@@ -7327,38 +7327,38 @@ def main():
                 continue
             if a in flag_map:
                 if i + 1 >= len(args):
-                    print(f"specs: {a} requires a value", file=sys.stderr)
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
                     sys.exit(1)
                 fields[flag_map[a]] = args[i + 1]
                 skip_next = True
                 continue
             if a.startswith("--"):
-                print(f"specs: unknown flag '{a}' for backlog-update", file=sys.stderr)
+                print(f"Signum: unknown flag '{a}' for backlog-update", file=sys.stderr)
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
             print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
-            print("specs: --assignee and --unassign are mutually exclusive", file=sys.stderr)
+            print("Signum: --assignee and --unassign are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
-            print("specs: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
+            print("Signum: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         # Coerce --epic value to a real bool — backend rejects strings here.
         if "isEpic" in fields:
             v = str(fields["isEpic"]).lower()
             if v not in ("true", "false"):
-                print(f"specs: --epic must be 'true' or 'false', got '{fields['isEpic']}'", file=sys.stderr)
+                print(f"Signum: --epic must be 'true' or 'false', got '{fields['isEpic']}'", file=sys.stderr)
                 sys.exit(1)
             fields["isEpic"] = (v == "true")
         # Guard the status enum client-side (the API also rejects it) so a bad
         # value fails fast with the valid set, instead of a round-trip 400.
         if "status" in fields and fields["status"] not in BACKLOG_STATUSES:
-            print(f"specs: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
+            print(f"Signum: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
             sys.exit(1)
         if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
-            print("specs: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
+            print("Signum: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
             sys.exit(1)
         validate_timing_fields(fields)
         validate_deployment_fields(fields)
@@ -7404,8 +7404,8 @@ def main():
     elif cmd == "promote-backlog":
         # Spec 023: removed. Fail with directions rather than "unknown command",
         # since this was the documented way to turn an item into a spec.
-        print("specs: 'promote-backlog' was removed in spec 023 — there is no hard link", file=sys.stderr)
-        print("       between a backlog item and a feature any more. Instead:", file=sys.stderr)
+        print("Signum: 'promote-backlog' was removed in spec 023 — there is no hard link", file=sys.stderr)
+        print("        between a backlog item and a feature any more. Instead:", file=sys.stderr)
         print("         specs-cli.py create-feature <project> <NNN-name>", file=sys.stderr)
         print("         specs-cli.py create-doc     <project> <NNN-name> spec.md", file=sys.stderr)
         print("         specs-cli.py backlog-comment <project> #N \"Specced as <NNN-name>\"", file=sys.stderr)
@@ -7593,13 +7593,13 @@ def main():
         if "--bug" in args:
             i = args.index("--bug")
             if i + 2 >= len(args):
-                print("specs: --bug requires <project-id> <bug-#N>", file=sys.stderr)
+                print("Signum: --bug requires <project-id> <bug-#N>", file=sys.stderr)
                 sys.exit(1)
             attach_to_bug(args[i + 1], args[i + 2], file_path)
         elif "--backlog" in args:
             i = args.index("--backlog")
             if i + 2 >= len(args):
-                print("specs: --backlog requires <project-id> <backlog-#N>", file=sys.stderr)
+                print("Signum: --backlog requires <project-id> <backlog-#N>", file=sys.stderr)
                 sys.exit(1)
             attach_to_backlog(args[i + 1], args[i + 2], file_path)
         else:

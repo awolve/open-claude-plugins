@@ -122,7 +122,7 @@ def get_headers():
     if method == "azure-cli":
         token, _ = _get_azure_token()
         if not token:
-            print("specs: Azure CLI token unavailable — run 'az login' or '/awolve-spec:login'", file=sys.stderr)
+            print("Signum: Azure CLI token unavailable — run 'az login' or '/awolve-spec:login'", file=sys.stderr)
             return None
         return {"Authorization": f"Bearer {token}"}
 
@@ -158,8 +158,8 @@ def login_azure(service_url=None):
     """Set up Azure CLI auth method. Tries alternate Azure config first, then default."""
     token, env_name = _get_azure_token()
     if not token:
-        print("specs: Azure CLI not available or not logged in", file=sys.stderr)
-        print("specs: run 'az login' first", file=sys.stderr)
+        print("Signum: Azure CLI not available or not logged in", file=sys.stderr)
+        print("Signum: run 'az login' first", file=sys.stderr)
         return False
 
     url = service_url or _read_auth().get("service_url", "https://specs.awolve.ai")
@@ -167,9 +167,9 @@ def login_azure(service_url=None):
     # Verify the token works against Signum
     if not _verify_token(token, url):
         email = _get_azure_email() or "unknown"
-        print(f"specs: Azure CLI token ({email}, env: {env_name}) was rejected by {url}", file=sys.stderr)
-        print(f"specs: your Azure account may not have access to this Signum instance", file=sys.stderr)
-        print(f"specs: use an API key instead: /awolve-spec:login with --api-key", file=sys.stderr)
+        print(f"Signum: Azure CLI token ({email}, env: {env_name}) was rejected by {url}", file=sys.stderr)
+        print(f"Signum: your Azure account may not have access to this Signum instance", file=sys.stderr)
+        print(f"Signum: use an API key instead: /awolve-spec:login with --api-key", file=sys.stderr)
         return False
 
     email = _get_azure_email() or "unknown"
@@ -181,7 +181,7 @@ def login_azure(service_url=None):
     data["azure_env"] = env_name
     data.pop("api_key", None)
     _write_auth(data)
-    print(f"specs: logged in as {email} (Azure CLI, env: {env_name} — token auto-refreshes)")
+    print(f"Signum: logged in as {email} (Azure CLI, env: {env_name} — token auto-refreshes)")
     return True
 
 
@@ -199,7 +199,7 @@ def login_apikey(api_key=None, email=None, service_url=None, from_clipboard=Fals
             if result.returncode == 0:
                 api_key = result.stdout.strip()
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            print("specs: clipboard not available (pbpaste not found)", file=sys.stderr)
+            print("Signum: clipboard not available (pbpaste not found)", file=sys.stderr)
             return False
 
     if not api_key:
@@ -207,23 +207,23 @@ def login_apikey(api_key=None, email=None, service_url=None, from_clipboard=Fals
             import getpass
             api_key = getpass.getpass("API key: ").strip()
         except (EOFError, OSError):
-            print("specs: cannot read key interactively", file=sys.stderr)
-            print("specs: copy key to clipboard and retry with --from-clipboard", file=sys.stderr)
+            print("Signum: cannot read key interactively", file=sys.stderr)
+            print("Signum: copy key to clipboard and retry with --from-clipboard", file=sys.stderr)
             return False
 
     if not api_key:
-        print("specs: no key provided — aborting", file=sys.stderr)
+        print("Signum: no key provided — aborting", file=sys.stderr)
         return False
 
     if not api_key.startswith("sk_"):
-        print("specs: invalid key — must start with sk_", file=sys.stderr)
+        print("Signum: invalid key — must start with sk_", file=sys.stderr)
         return False
 
     url = service_url or _read_auth().get("service_url", "https://specs.awolve.ai")
 
     # Verify the key works before saving
     if not _verify_token(api_key, url):
-        print(f"specs: API key rejected by {url} — check the key and try again", file=sys.stderr)
+        print(f"Signum: API key rejected by {url} — check the key and try again", file=sys.stderr)
         return False
 
     data = _read_auth()
@@ -239,7 +239,7 @@ def login_apikey(api_key=None, email=None, service_url=None, from_clipboard=Fals
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
-    print("specs: logged in (API key)")
+    print("Signum: logged in (API key)")
     return True
 
 
@@ -252,7 +252,7 @@ def logout():
     """Remove stored credentials."""
     if os.path.isfile(AUTH_FILE):
         os.remove(AUTH_FILE)
-    print("specs: logged out")
+    print("Signum: logged out")
 
 
 def status():
@@ -266,16 +266,16 @@ def status():
         env_name = data.get("azure_env", "default")
         token, _ = _get_azure_token()
         if token:
-            print(f"specs: authenticated as {email} via Azure CLI, env: {env_name} ({url})")
-            print(f"specs: token auto-refreshes — no expiry")
+            print(f"Signum: authenticated as {email} via Azure CLI, env: {env_name} ({url})")
+            print(f"Signum: token auto-refreshes — no expiry")
         else:
-            print(f"specs: Azure CLI configured (env: {env_name}) but token unavailable — run 'az login'")
+            print(f"Signum: Azure CLI configured (env: {env_name}) but token unavailable — run 'az login'")
     elif method == "api-key":
         email = data.get("email", "unknown")
         url = data.get("service_url", "default")
-        print(f"specs: authenticated as {email} via API key ({url})")
+        print(f"Signum: authenticated as {email} via API key ({url})")
     else:
-        print("specs: not authenticated — run /awolve-spec:login")
+        print("Signum: not authenticated — run /awolve-spec:login")
 
 
 if __name__ == "__main__":
