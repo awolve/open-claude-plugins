@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.50.0 — 2026-09-15 — Björn Allvin
+
+- **`backlog-add` prints the new item's portal link.** A second line, `  portal: <service_url>/portal/<project>/backlog/<number>`, follows the `created` line, the way `create-feature` and `bug` already link to what they made. Epics get the same line. The link uses the item number from the create response; if the response has no number, no link is printed.
+
 ## 0.49.3 — 2026-09-13
 
 - `feedback-user-create`: the host-app contract path points at `operations/tools/signum/` in Cortex, where the Signum folder now lives.

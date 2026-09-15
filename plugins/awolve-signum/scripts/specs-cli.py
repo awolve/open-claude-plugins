@@ -4284,6 +4284,10 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
     assigned_note = f", assigned to {_assignee_label(item) or assignee}" if assignee else ""
     tag_note = f", tagged {' '.join('#' + n for n in _tag_names(item))}" if _tag_names(item) else ""
     print(f"specs: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}{tag_note}")
+    # The portal detail route takes the item number, not its uuid (see view-backlog).
+    # No number in the response means no link, rather than one that 404s.
+    if item.get("number"):
+        print(f"  portal: {service_url}/portal/{project_id}/backlog/{item['number']}")
 
 
 def set_backlog_parent(project_id, item_ref, parent_ref):
