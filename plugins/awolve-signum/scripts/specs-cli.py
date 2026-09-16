@@ -3173,7 +3173,7 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
 
     severity = detail.get("severity", "?")
     sev_marker = {"critical": "!!!", "high": "!!", "medium": "!", "low": "."}.get(severity, "?")
-    reporter = detail.get("reporterName") or detail.get("reporterEmail", "?")
+    reporter = _reporter_label(detail)
     title = detail.get("title", "untitled")
     status = detail.get("status", "?")
     created = detail.get("createdAt", "?")
@@ -3678,6 +3678,27 @@ def _assignee_label(item):
     return item.get("assignedToName") or item.get("assignedToEmail")
 
 
+# A feedback user's own address is synthetic and never routable, so it is worth
+# no line of output. Anything else is where a triager replies.
+FEEDBACK_EMAIL_DOMAIN = "feedback.invalid"
+
+
+def _reporter_label(item, name_key="reporterName", email_key="reporterEmail"):
+    """Name *and* email for whoever filed an item — the reply address is the point.
+
+    A report filed through a feedback widget carries the app's own user in these
+    fields, which is usually a different address from the account that holds the
+    key (Signum bug #40).
+    """
+    name = item.get(name_key)
+    email = item.get(email_key)
+    if email and email.lower().endswith("@" + FEEDBACK_EMAIL_DOMAIN):
+        email = None
+    if name and email:
+        return f"{name} <{email}>"
+    return name or email or "?"
+
+
 def _print_assignee_error(status_code, body, assignee):
     """Turn the server's short assignee error codes into an actionable message.
 
@@ -3874,7 +3895,9 @@ def view_backlog(project_id, ref, as_json=False):
     parent = item.get("parent")
     children = item.get("children") or []
     comments = item.get("comments") or []
-    created_by = item.get("createdByName") or item.get("createdByEmail") or item.get("createdBy", "?")
+    created_by = _reporter_label(item, "createdByName", "createdByEmail")
+    if created_by == "?":
+        created_by = item.get("createdBy", "?")
     created = item.get("createdAt", "?")
     updated = item.get("updatedAt", "?")
 

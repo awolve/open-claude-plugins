@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.52.0 — 2026-09-16 — Björn Allvin
+
+- **`view-bug` and `view-backlog` print the reporter's email, not just their name.** The line now reads `Cornelia Kärnekull <cornelia.karnekull@awolve.ai>` where it used to read `Cornelia Kärnekull`. The email is the address a triager replies to, and for a report filed through an in-app feedback widget it is usually a different address from the account that holds the key — so dropping it lost the one field that mattered.
+- A feedback user's own synthetic address is still not printed; it is not routable. When there is no reply address, the line is unchanged.
+- List output (`bugs`, `backlog`) stays name-only.
+
 ## 0.51.0 — 2026-09-15 — Björn Allvin
 
 - **CLI output says `Signum:`.** Every message the CLI prints, on stdout and stderr, starts with `Signum:` instead of `specs:`. For example: `Signum: created feature '<id>'`, `Signum: bug #<n> created — <title>`, `Signum: created backlog item '<title>' in '<project>' (priority: <p>)`. The words after the prefix are unchanged, so "feature" and "spec" still name what they always named. Only the prefix changed.
