@@ -29,6 +29,9 @@ Usage:
                                        — Update a feature's display title without renaming the slug
     specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]
                                        — Create a new feature in a project
+    specs-cli.py create-feature <project-id> --from-item <item-#N> [--name SLUG] [--status STATUS]
+                                       — Create a feature from a backlog item and link the item to it.
+                                         Keeps the item's title and status; refuses an epic or a linked item
     specs-cli.py create-doc <project-id> <feature-name> <filename>
                                        — Add a document to an existing feature
     specs-cli.py rename-feature <project-id> <old-name> <new-name>
@@ -59,9 +62,11 @@ Usage:
     specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
+                                       [--feature NAME|PROJECT/NAME | --clear-feature]
                                        — Update fields on an existing backlog item.
                                          --tags replaces the set; --add-tag/--remove-tag are repeatable deltas.
                                          --deployed-stage/--deployed-url record where the fix runs (set together)
+                                         --feature links the item to the feature it delivers (one per item)
     specs-cli.py --version
                                        — Print the installed plugin version (compare it with the
                                          one the portal changelog names as latest)
@@ -2196,6 +2201,40 @@ def _deployed_line(item):
     return " ".join(parts)
 
 
+def _feature_ref(item):
+    """`#46`, or `other-project #46` when the feature lives elsewhere. None if unlinked.
+
+    An item may deliver a feature in another project (it lives where its
+    pipeline deploys it), so the project is shown only when it differs from the
+    item's own — the same rule the portal uses for its project tag.
+    """
+    feature_id = item.get("featureId")
+    if not feature_id:
+        return None
+    feature_project, _, feature_name = feature_id.partition("/")
+    number = item.get("featureNumber")
+    label = f"#{number}" if number is not None else feature_name
+    own_project = item.get("projectId")
+    if own_project and feature_project != own_project:
+        label = f"{feature_project} {label}"
+    return label
+
+
+def _feature_line(item):
+    """The feature this item delivers, for view-backlog, or None.
+
+    Renders nothing when the item is unlinked, so output is unchanged for
+    projects that never link anything. The feature's status is labelled as the
+    feature's and never stands in for the item's own.
+    """
+    ref = _feature_ref(item)
+    if not ref:
+        return None
+    title = item.get("featureTitle")
+    status = item.get("featureStatus")
+    return f"{ref}{' ' + title if title else ''}{f' [{status}]' if status else ''}"
+
+
 def validate_deployment_fields(fields):
     """Guard the spec-033 deploy fields before the PATCH round-trip.
 
@@ -3742,10 +3781,13 @@ def _print_backlog_row(item, indent=0):
     status = item.get("status", "?")
     title = item.get("title", "untitled")
     number = item.get("number")
-    feature_id = item.get("featureId")
     is_epic = item.get("isEpic", False)
     pri_marker = {"high": "!!!", "medium": "!!", "low": "!"}.get(priority, "?")
-    promoted = f" → {feature_id}" if feature_id else ""
+    # The feature this item delivers, as a number — the list's equivalent of
+    # the portal's "Part of" column. Replaces the old "→ project/name" suffix
+    # from the promote era.
+    feature_ref = _feature_ref(item)
+    feature_suffix = f" · feature {feature_ref}" if feature_ref else ""
     histogram = ""
     counts = item.get("childStatusCounts") or {}
     if counts:
@@ -3769,7 +3811,7 @@ def _print_backlog_row(item, indent=0):
     dep_stage = item.get("deployedStage")
     dep = f" [{dep_stage}]" if dep_stage else ""
     print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{_tag_suffix(item)}{histogram}")
-    print(f"       {pad}{status}{dep}{promoted}{assigned}{timing}")
+    print(f"       {pad}{status}{dep}{feature_suffix}{assigned}{timing}")
 
 
 def _plugin_version():
@@ -3889,9 +3931,6 @@ def view_backlog(project_id, ref, as_json=False):
     description, _ = _strip_inline_images(item.get("description") or "")
     if not description:
         description = "(no description)"
-    feature_id = item.get("featureId")
-    feature_title = item.get("featureTitle")
-    feature_status = item.get("featureStatus")
     parent = item.get("parent")
     children = item.get("children") or []
     comments = item.get("comments") or []
@@ -3909,10 +3948,6 @@ def view_backlog(project_id, ref, as_json=False):
     tag_names = _tag_names(item)
     if tag_names:
         print(f"  tags:      {' '.join('#' + n for n in tag_names)}")
-    if feature_id:
-        ft = f" — {feature_title}" if feature_title else ""
-        fs = f" [{feature_status}]" if feature_status else ""
-        print(f"  promoted:  feature → {feature_id}{ft}{fs}")
     if parent:
         p_num = parent.get("number")
         p_label = f"#{p_num} {parent.get('title', '')}".strip()
@@ -3946,6 +3981,9 @@ def view_backlog(project_id, ref, as_json=False):
     deployed = _deployed_line(item)
     if deployed:
         print(f"  deployed:  {deployed}")
+    feature = _feature_line(item)
+    if feature:
+        print(f"  feature:   {feature}")
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
@@ -4382,7 +4420,7 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
     done by the caller before the round-trip.
     """
     if not fields and not tag_edit:
-        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign", file=sys.stderr)
+        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign/--feature/--clear-feature", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -4422,6 +4460,8 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
         _print_assignee_error(status_code, body, fields.get("assignedTo"))
         if _print_tag_error(status_code, body):
             sys.exit(1)
+        if "feature" in fields and _print_feature_error(status_code, body):
+            sys.exit(1)
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -4429,8 +4469,52 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
         print(f"Signum: failed to update item (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
+    if "feature" in fields:
+        _check_feature_took(body, fields["feature"])
+
     changed = ", ".join(f"{k}={v!r}" for k, v in fields.items())
     print(f"Signum: updated '#{item.get('number')}' ({changed})")
+
+
+def _print_feature_error(status_code, body):
+    """Surface the server's explanation for a refused --feature, if it gave one.
+
+    A bare feature name resolves only inside the item's own project, and the
+    server's `detail` says how to name one elsewhere (`project/feature-name`).
+    The generic "failed (HTTP 404): feature_not_found" drops exactly that hint.
+    """
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    if not detail:
+        return False
+    print(f"Signum: could not set feature (HTTP {status_code}): {detail}", file=sys.stderr)
+    return True
+
+
+def _check_feature_took(body, requested):
+    """Confirm the server actually stored the feature link.
+
+    A service that predates item → feature links answers the PATCH with 200 and
+    silently drops the unknown `feature` key, so the status code cannot be
+    trusted here. Reading the value back off the response can: it is what the
+    service now holds. No version constant to keep in step with a release.
+    """
+    try:
+        stored = json.loads(body).get("featureId")
+    except (json.JSONDecodeError, AttributeError):
+        stored = None
+    if requested is None:
+        took = stored is None
+    else:
+        # The server stores `project/feature-name`; a bare name matches its tail.
+        took = stored is not None and (stored == requested or stored.endswith("/" + requested))
+    if not took:
+        print("Signum: this service does not support item→feature links yet — "
+              "update the service, or record the link in a comment for now", file=sys.stderr)
+        sys.exit(1)
 
 
 def delete_backlog_item(project_id, item_ref):
@@ -4671,6 +4755,98 @@ def set_title(feature_id, title):
         sys.exit(1)
 
     print(f"Signum: feature {feature_id} title → {title!r}")
+
+
+# Letters a plain accent-strip would mangle or drop. ø and æ are not accented
+# forms of anything, so NFKD leaves them alone and a naive slugifier then
+# deletes them — which is how an older version of this path produced
+# `beskrivningsf-lt-f-r-sektioner` from "Beskrivningsfält för sektioner".
+_TRANSLITERATE = {"å": "a", "ä": "a", "ö": "o", "ø": "o", "æ": "ae", "ü": "u", "ß": "ss"}
+
+
+def _slugify_title(title, max_len=50):
+    """A folder-safe slug from a human title, keeping every letter it can.
+
+    Transliterates the Nordic letters above explicitly, strips remaining
+    accents (é → e), and collapses everything else to single hyphens. Cut at a
+    word boundary so the folder name never ends mid-word.
+    """
+    s = str(title or "").lower()
+    s = "".join(_TRANSLITERATE.get(ch, ch) for ch in s)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    if len(s) > max_len:
+        s = s[:max_len].rsplit("-", 1)[0] or s[:max_len]
+    return s
+
+
+def _next_feature_number(service_url, headers, project_id, specs_path):
+    """The next feature number: past both the local folders and the service.
+
+    Local folders alone miss features created on another machine, and would
+    reuse a number whose folder was deleted locally. The service's active list
+    covers the first; soft-deleted features are not visible to the CLI, so a
+    number freed by a soft delete can still come back — a known limit.
+    """
+    local_next = _next_spec_number(specs_path)
+    try:
+        status_code, body = api_request(f"{service_url}/api/features?project={project_id}", headers=headers)
+        numbers = [f.get("number") for f in json.loads(body)] if status_code == 200 else []
+        server_next = max((n for n in numbers if isinstance(n, int)), default=0) + 1
+    except (ConnectionError, json.JSONDecodeError, TypeError):
+        server_next = 0
+    return max(local_next, server_next)
+
+
+def create_feature_from_item(project_id, item_ref, name=None, initial_status="specifying"):
+    """Create a feature from an existing backlog item, and link the item to it.
+
+    The reverse of a plan creating the items that deliver a feature. What it
+    must not do is what the old promote button did: it leaves the item's own
+    status alone (promote forced it to `planned`), refuses an item that already
+    delivers a feature rather than making a second one, and refuses an epic —
+    an epic is backlog structure and ships nothing itself.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-signum:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+    proj = _find_project(cfg, project_id)
+
+    item_id, item = _resolve_backlog_id(headers, service_url, project_id, item_ref)
+    if not item_id:
+        print(f"Signum: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    number = item.get("number")
+    if item.get("isEpic"):
+        print(f"Signum: #{number} is an epic — an epic ships nothing itself. Create the feature from one of its children instead.", file=sys.stderr)
+        sys.exit(1)
+    if item.get("featureId"):
+        print(f"Signum: #{number} already delivers {item['featureId']}. To move it, use "
+              f"`backlog-update {project_id} {number} --feature <other>`.", file=sys.stderr)
+        sys.exit(1)
+
+    title = item.get("title") or ""
+    slug = name or _slugify_title(title)
+    if not slug:
+        print(f"Signum: could not derive a folder name from #{number}'s title — pass --name <slug>", file=sys.stderr)
+        sys.exit(1)
+    num = _next_feature_number(service_url, headers, project_id, proj["path"])
+    folder_name = f"{num:03d}-{slug}"
+
+    create_feature(project_id, folder_name, initial_status=initial_status)
+    # create_feature titles the feature from its slug, which would drop every
+    # letter the slug transliterated. The item's own words are the title.
+    if title:
+        set_title(f"{project_id}/{folder_name}", title)
+    update_backlog_item(project_id, str(number if number is not None else item_id), {"feature": folder_name})
+    print(f"Signum: created from #{number} — the item keeps its own status ({item.get('status', '?')})")
 
 
 def create_feature(project_id, name, initial_status="specifying", description=None):
@@ -5290,6 +5466,8 @@ def list_features(project_id):
         print(f"Signum: no features in '{project_id}'")
         return
 
+    items_by_feature = _feature_items(service_url, headers, project_id)
+
     print(f"Signum: {len(features)} feature(s) in '{project_id}'")
     print()
     for f in features:
@@ -5303,7 +5481,50 @@ def list_features(project_id):
             "completed": "+",
             "archived": "x",
         }.get(feat_status, "?")
-        print(f"  [{status_marker}] {name:40s}  {feat_status:15s}  {doc_count} doc(s)")
+        summary = _stage_summary(items_by_feature.get(f.get("id"), []))
+        tail = f"  · {summary}" if summary else ""
+        print(f"  [{status_marker}] {name:40s}  {feat_status:15s}  {doc_count} doc(s){tail}")
+
+
+def _feature_items(service_url, headers, project_id):
+    """{feature id: [item, ...]} — the backlog items delivering each feature.
+
+    Read from the portal's per-project features list, which carries each
+    feature's items; the CLI's own feature listing does not. An older service,
+    or any failure here, yields {} and the listing simply omits the summary —
+    a count is a nicety, not a reason to fail the command.
+    """
+    try:
+        status_code, body = api_request(
+            f"{service_url}/api/portal/projects/{urllib.parse.quote(project_id, safe='')}/features",
+            headers=headers,
+        )
+        if status_code != 200:
+            return {}
+        return {f["id"]: f.get("items") or [] for f in json.loads(body) if isinstance(f, dict) and "id" in f}
+    except (ConnectionError, json.JSONDecodeError, TypeError, KeyError):
+        return {}
+
+
+def _stage_summary(items):
+    """`3 items · 2 staging, 1 production`, or None for a feature with no items.
+
+    A count of the items' stages, never a single stage for the feature: its
+    parts land at different times, so no one stage describes it. Mirrors the
+    portal's summary on the Features tab.
+    """
+    if not items:
+        return None
+    by_stage = {}
+    for item in items:
+        stage = item.get("deployedStage")
+        if stage:
+            by_stage[stage] = by_stage.get(stage, 0) + 1
+    label = f"{len(items)} item{'' if len(items) == 1 else 's'}"
+    if not by_stage:
+        return label
+    stages = sorted(by_stage.items(), key=lambda kv: (-kv[1], kv[0]))
+    return f"{label} · " + ", ".join(f"{n} {s}" for s, n in stages)
 
 
 # ---------------------------------------------------------------------------
@@ -7306,7 +7527,7 @@ def main():
         # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
         positional = []
         flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo",
-                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", **DEPLOY_FLAGS}
+                    "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", "--feature": "feature", **DEPLOY_FLAGS}
         fields = {}
         tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
         skip_next = False
@@ -7329,6 +7550,11 @@ def main():
                 fields["deployedStage"] = None
                 fields["deployedUrl"] = None
                 fields["deployedAt"] = None
+                continue
+            # Item → feature link: the valueless twin of --feature. The API
+            # reads an explicit null as "this item no longer delivers a feature".
+            if a == "--clear-feature":
+                fields["feature"] = None
                 continue
             # Spec 027: tag flags. --tags replaces the set; --add-tag and
             # --remove-tag are repeatable deltas folded against the item's
@@ -7360,10 +7586,13 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME|PROJECT/NAME | --clear-feature]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("Signum: --assignee and --unassign are mutually exclusive", file=sys.stderr)
+            sys.exit(1)
+        if "--feature" in args and "--clear-feature" in args:
+            print("Signum: --feature and --clear-feature are mutually exclusive", file=sys.stderr)
             sys.exit(1)
         if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
             print("Signum: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
@@ -7461,17 +7690,32 @@ def main():
             sys.exit(1)
         delete_attachment(args[1])
     elif cmd == "create-feature":
-        if len(args) < 3:
-            print("Usage: specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]", file=sys.stderr)
-            sys.exit(1)
         status_val = "specifying"
         description_val = None
+        from_item = None
+        name_val = None
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args):
                 status_val = args[i + 1]
             elif a == "--description" and i + 1 < len(args):
                 description_val = args[i + 1]
-        create_feature(args[1], args[2], initial_status=status_val, description=description_val)
+            elif a == "--from-item" and i + 1 < len(args):
+                from_item = args[i + 1]
+            elif a == "--name" and i + 1 < len(args):
+                name_val = args[i + 1]
+        if from_item is not None:
+            # Feature from an existing item: the name comes from the item's
+            # title unless --name overrides it.
+            if len(args) < 2 or args[1].startswith("--"):
+                print("Usage: specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS]", file=sys.stderr)
+                sys.exit(1)
+            create_feature_from_item(args[1], from_item, name=name_val, initial_status=status_val)
+        else:
+            if len(args) < 3:
+                print("Usage: specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]\n"
+                      "       specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS]", file=sys.stderr)
+                sys.exit(1)
+            create_feature(args[1], args[2], initial_status=status_val, description=description_val)
     elif cmd == "set-description":
         if len(args) < 3:
             print("Usage: specs-cli.py set-description <feature-id> <text>", file=sys.stderr)

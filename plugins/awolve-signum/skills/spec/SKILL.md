@@ -73,7 +73,7 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-signum:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
 - `/awolve-signum:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
 - `/awolve-signum:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
-- `/awolve-signum:backlog-update` — Update title/description/priority/status/assignee/tags on an existing item
+- `/awolve-signum:backlog-update` — Update title/description/priority/status/assignee/tags on an existing item, or link it to the feature it delivers
 - `/awolve-signum:backlog-delete` — Soft-delete an item (cascades to children if it's an epic)
 - `/awolve-signum:bugs` — List open bugs for a project (`--assignee`/`--unassigned` by owner, `--tag`/`--untagged` by label)
 - `/awolve-signum:view-bug` — Show full details of a single bug (description, severity, repro)
@@ -111,6 +111,7 @@ Full subcommand surface:
 | `set-description <feature-id> <text>` | Set or clear feature shortDescription |
 | `set-title <feature-id> <text>` | Update a feature's display title without renaming the slug (separate from `rename-feature` which changes both name + title in one call) |
 | `create-feature <project-id> <name> [--status] [--description]` | Create feature (service auto-assigns the number — do NOT include a numeric prefix in `<name>`) |
+| `create-feature <project-id> --from-item <N> [--name SLUG]` | Create a feature from backlog item #N: folder name from the item's title (Nordic letters transliterated, not dropped), the item's title kept as the feature's, and the item linked as what delivers it. Refuses an epic and an already-linked item; never changes the item's status |
 | `create-doc <project-id> <feature-name> <filename>` | Add a document to a feature |
 | `rename-feature <project-id> <old> <new>` | Rename feature folder + service |
 | `rename-doc <file-path> <new-filename>` | Rename a document. Refuses (exit 1) when another file in the folder carries the same `spec_doc_id` — a sync conflict copy; `rm` the stray file instead. |
@@ -136,7 +137,7 @@ Full subcommand surface:
 | `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` and `--tag` force flat view, otherwise a matching child would vanish whenever its epic didn't match too. `--tag` is repeatable and OR-ed. |
 | `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL] [--tags a,b]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
 | `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Reparent an item (or pass `none` to detach). Errors include `parent_not_an_epic`, `parent_must_be_top_level`, `epic_has_children`, `child_cannot_be_epic`. |
-| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). |
+| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags] [--feature NAME \| --clear-feature]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). `--feature` links the item to the feature it delivers (one per item; `project/name` for another project); it never changes the item's status. |
 | `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If the item is an epic, the server cascades to all active children in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
 | `tags <project-id> [--json]` | List a project's tags with usage counts (backlog / bugs). Read this before coining a new one. |
 | `tag-create <project-id> <name> [--color C] [--description D] [--force]` | Create a tag. Exits 2 and lists close matches when a similar tag already exists — reuse one of those unless the user confirms otherwise; `--force` creates anyway. An exact match is a no-op, not an error. |

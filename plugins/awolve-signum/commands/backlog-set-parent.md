@@ -45,7 +45,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-set-parent my-project
 ## When to use this
 
 - Restructuring a backlog: pulling related top-level items under a new epic
-- Detaching a child after it's been promoted to a feature spec
+- Detaching a child that has grown into its own feature
 - Reorganizing after a planning conversation
 
 For new items, prefer creating them with `--parent` directly via `/awolve-signum:backlog-add` rather than creating then reparenting.

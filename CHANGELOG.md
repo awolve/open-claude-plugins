@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.53.0 — 2026-09-24 — Björn Allvin
+
+Backlog items can now name the spec feature they deliver, and the feature's page in Signum lists them with their status and deployment stage. Needs a Signum service that supports the link; against one that doesn't, `--feature` says so instead of reporting a success that didn't happen.
+
+- **`backlog-update --feature <name>` links an item to the feature it delivers**, and `--clear-feature` unlinks it. An item delivers at most one feature; naming another one moves it. A bare name is looked up in the item's own project; write `project/feature-name` for a feature in another project. Linking never changes the item's status.
+- **`/awolve-signum:req <project> <item-number>` creates a feature from a backlog item.** The folder name comes from the item's title, with å/ä/ö/ø/æ transliterated rather than dropped (`--name` overrides it), the feature keeps the item's own title, and the item is linked to it. Also available directly as `create-feature <project> --from-item <N>`. It refuses an epic and an item that already delivers a feature, and leaves the item's status alone.
+- **`/awolve-signum:plan` offers to create backlog items for the plan** — one for the whole plan, one per part that deploys on its own, or none — and asks where they go in the hierarchy (an existing epic, a new one, or top level). It is an offer: saying no creates nothing and it doesn't ask again.
+- **`view-backlog` prints a `feature:` line** with the feature's number, title and its own status, and the `backlog` list adds `· feature #46` to linked rows. These replace the old `promoted:` line and `→ project/name` suffix.
+- **`list-features` shows each feature's items**, e.g. `· 2 items · 1 staging`.
+- An unknown feature now prints the service's explanation (including the `project/feature-name` hint) rather than a bare error code.
+
 ## 0.52.0 — 2026-09-16 — Björn Allvin
 
 - **`view-bug` and `view-backlog` print the reporter's email, not just their name.** The line now reads `Cornelia Kärnekull <cornelia.karnekull@awolve.ai>` where it used to read `Cornelia Kärnekull`. The email is the address a triager replies to, and for a report filed through an in-app feedback widget it is usually a different address from the account that holds the key — so dropping it lost the one field that mattered.

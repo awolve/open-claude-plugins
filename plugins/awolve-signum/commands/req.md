@@ -1,7 +1,7 @@
 ---
 description: Write requirements.md for a feature — what to build and why
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion]
-argument-hint: [project/feature-name]
+argument-hint: [project/feature-name | project item-number]
 ---
 
 # /awolve-signum:req
@@ -12,7 +12,23 @@ Write `requirements.md` for a feature. Use this when stakeholders need to approv
 
 ### 1. Resolve project and feature
 
-The user's argument "$ARGUMENTS" may contain a project name, feature name, or both (as `project/feature-name`).
+The user's argument "$ARGUMENTS" may contain a project name, feature name, or both (as `project/feature-name`) — or a project and a **backlog item** (`my-project 208`, `my-project #208`).
+
+**Starting from a backlog item.** When the argument names an item, the feature is created *from* it, and the item is linked to the new feature as the one that delivers it:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py create-feature <project-id> --from-item <item-number>
+```
+
+This picks the folder name from the item's title (pass `--name <slug>` to choose your own — a title that works as a backlog line is not always a good folder name), keeps the item's title as the feature's title, creates the folder, registers the feature and sets the link. It refuses an epic, since an epic ships nothing of its own, and an item that already delivers a feature. It does **not** change the item's status: whether work has started is still the item's own fact.
+
+Then read the item for context before gathering requirements:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py view-backlog <project-id> <item-number>
+```
+
+Its description and comments are the starting material for step 2 — ask about what they leave open rather than asking again what they already answer. **Quote the item's own words verbatim, in their original language,** wherever the exact wording matters, and write everything around the quote in the spec's language: a reporter's phrasing is evidence, and a translation of it is a paraphrase. Skip the folder creation below; the command above has already done it.
 
 If no argument given, ask the user:
 - Which project is this for?
@@ -83,6 +99,8 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/requirements.md`:
 - **State the target role explicitly** — who may use this and who must not. The implementing AI reads requirements for security scope, so access boundaries belong in the *what*, not only in the design.
 
 ### 4. Register and push
+
+If the feature was created from a backlog item (step 1), it is already registered and linked — register only the document, below.
 
 If this is a new feature (folder didn't exist before), register it in Signum:
 

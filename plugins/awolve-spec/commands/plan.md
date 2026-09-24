@@ -74,7 +74,35 @@ Then re-read the file to pick up the sync frontmatter. The PostToolUse hook hand
 
 If the file already has sync frontmatter, the PostToolUse hook handles the push automatically.
 
-### 5. Stop
+### 5. Offer backlog items (optional)
+
+A backlog item can carry what a spec cannot: a status of its own, an assignee, and — where the project's pipeline reports it — a deployment stage and a preview URL a tester can open. Offer to create items that deliver this feature. **Offer, never require:** a feature with no items is complete, and a plan with no items is complete.
+
+**The test for more than one item is how the work deploys, not how the plan is phased.** One item per part that reaches production on its own — a second repository, a separately released service, a CLI or plugin shipped at its own version, a part that goes live before the rest. Phases of one branch that ship together are **one** item. Never one item per task.
+
+Ask with AskUserQuestion, without arguing for any answer:
+
+1. **Items?** — *one item for the whole plan* (the answer whenever the work ships in one place at one time, which is most of the time), *one per part that deploys on its own* (name the parts), or *no items*.
+2. **Where do they sit?** Ask only if items are being created, and skip it for a single item unless the user asks: *an existing epic* (list the project's epics from `backlog <project-id>`), *a new epic* named after the feature, or *top level*.
+
+If the answer is no items, or there is no answer: create nothing, write nothing, and say nothing more about it — not now, not on a later run.
+
+Otherwise create each item and link it to the feature:
+
+```bash
+# A new epic, if chosen — first, since an item's parent must already be an epic:
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<feature title>" --epic
+# Each item (add --parent <epic-number> to place it under the epic):
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<item title>" "<one-paragraph description>" medium
+# Link it — read the item number from the previous command's output:
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-number> --feature <feature-name>
+```
+
+- **Never link the epic itself.** It is backlog structure and ships nothing; linking it would list a row with no stage on the feature.
+- **A part released by another Signum project lives in that project**, and is linked across with `--feature <this-project>/<feature-name>` — the pipeline that deploys it can only report on items in its own project. A part in a repository with no Signum project of its own stays in this one.
+- **Order stays in plan.md.** Write each item's number beside its phase heading (`- [ ] 1. Service changes → #212`). Do not add dependencies between the items to express order: a dependency marks the later item as blocked until the earlier one is *finished*, which is not what "ships second" means. Add one by hand only where a part genuinely cannot begin before another is done.
+
+### 6. Stop
 
 Tell the user:
 
@@ -91,6 +119,7 @@ The plan is the durable record that later sessions (and the portal) read to know
 - **Flip the feature to `in_progress` at the first implementation commit** (`specs-cli.py set-status <feature> in_progress`) — one command, and the portal shows what's actually being built
 - Check off tasks (`- [x]`) in the same turn the work completes — not in a batch at the end, and never only when the user asks "is the plan up to date?"
 - When a decision changes the approach mid-build, update the affected tasks and `design.md` immediately — specs track reality, not intentions
+- If the feature has items and the parts change, add, move (`backlog-update <project> <n> --feature <other>`) or unlink (`--clear-feature`) them in the same turn — the feature page lists them as what delivers it
 - The PostToolUse hook pushes each edit automatically; no manual sync needed
 
 When the last task is checked off, run the closure checklist in the `awolve-spec:spec` skill (docs match reality → shipped per the repo's ship cycle → statuses flipped → living docs updated).

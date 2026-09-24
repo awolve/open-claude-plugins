@@ -23,10 +23,12 @@ At least one field flag is required: `--title`, `--description`, `--priority` (l
 
 **Deployment info (spec 033):** `--deployed-stage preview|staging|production` and `--deployed-url <url>` record where the implementation currently runs — set together (a stage flip that kept the old URL would point at a torn-down preview host); the CLI stamps the deploy time automatically. `--clear-deployment` removes the fact. The stage is not a status: it says where the code runs, not who acts next.
 
+**The feature it delivers:** `--feature <feature-name>` links the item to a spec feature, so the feature's page lists it with its status and deployment stage. An item delivers at most one feature; naming another one moves it, and `--clear-feature` unlinks it. A bare name is looked up in the item's own project — for a feature in another project, write `<project>/<feature-name>` (an item belongs in the project whose pipeline deploys it, which is not always where the spec lives). Linking never changes the item's status. It needs permission to edit the feature as well as the item. A service too old to know the field would silently ignore it, so the CLI reads the stored value back and says so if it did not take.
+
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME | --clear-feature]
 ```
 
 Examples:
