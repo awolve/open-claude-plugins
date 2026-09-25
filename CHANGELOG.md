@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.53.1 — 2026-09-25 — Mattias Aspelund
+
+- **`docs/getting-started.md` onboards someone invited from outside Awolve.** It covers the steps in order: portal sign-in, creating an API key, installing the plugin, logging in (including a non-macOS route, since `--from-clipboard` needs `pbpaste`), `.claude/specs.md`, a first check, everyday requests, what each role can do, and common errors. It's written so Claude Code can follow it when pointed at it. The README links to it. No behaviour change.
+
 ## 0.53.0 — 2026-09-24 — Björn Allvin
 
 Backlog items can now name the spec feature they deliver, and the feature's page in Signum lists them with their status and deployment stage. Needs a Signum service that supports the link; against one that doesn't, `--feature` says so instead of reporting a success that didn't happen.

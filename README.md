@@ -2,6 +2,8 @@
 
 Claude Code plugin for spec-driven development with [Awolve Signum](https://specs.awolve.ai).
 
+**Invited to a Signum project from outside Awolve?** Start with [docs/getting-started.md](docs/getting-started.md): portal sign-in, API key, install, project config and day-to-day use, written so Claude Code can walk you through it.
+
 ## What it does
 
 - **Auto-pulls** latest spec files when you start a Claude Code session
