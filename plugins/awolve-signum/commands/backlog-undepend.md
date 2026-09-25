@@ -15,7 +15,12 @@ Parse the user's argument. Expected forms:
 - `<project> <item> <blocker>` — explicit project + both refs
 - `<item> <blocker>` — use the configured project (only one)
 
-References accept UUIDs or `#N` numeric form (with or without `#`).
+References accept UUIDs or `#N` numeric form (with or without `#`). A blocker
+in another project is written `<other-project>#N`.
+
+If the blocker is in a project you cannot read, the CLI cannot name it; remove
+it with the × on the item's page in the portal. Anyone who may edit the waiting
+item may remove any of its dependencies.
 
 Run:
 

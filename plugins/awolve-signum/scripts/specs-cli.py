@@ -3829,6 +3829,33 @@ def _plugin_version():
         return "unknown"
 
 
+_CROSS_REF = re.compile(r"^([a-z0-9][a-z0-9-]*)#(\d+)$", re.I)
+
+
+def _split_cross_ref(project_id, ref):
+    """'other-project#12' names an item in another project; anything else
+    ('#12', '12', a uuid) stays in project_id. Returns (project, ref)."""
+    m = _CROSS_REF.match(str(ref or "").strip())
+    if m:
+        return (m.group(1).lower(), f"#{m.group(2)}")
+    return (project_id, ref)
+
+
+def _dep_ref(d, home):
+    """How a linked item is named: #N at home, project#N elsewhere."""
+    if d.get("restricted"):
+        return f"(an item in {d.get('projectName') or d.get('projectId')})"
+    pid = d.get("projectId") or home
+    prefix = "" if pid == home else pid
+    return f"{prefix}#{d.get('number')}"
+
+
+def _dep_label(d, home):
+    if d.get("restricted"):
+        return _dep_ref(d, home)
+    return f"{_dep_ref(d, home)} {d.get('title', '')}".rstrip()
+
+
 def _resolve_backlog_id(headers, service_url, project_id, ref):
     """Resolve a backlog reference (uuid, '#42', or '42') to its uuid id within a project.
 
@@ -3956,18 +3983,24 @@ def view_backlog(project_id, ref, as_json=False):
     # Dependencies. Printed with each one's own status, because "blocked" on
     # its own tells you that you are stuck without telling you on what — and
     # the whole reason to look is to find out what to chase.
+    # A linked item can sit in another project. It is shown as project#N, or —
+    # when you cannot read that project — only by the project's name: the
+    # service sends nothing more.
+    home = item.get("projectId") or project_id
     depends_on = item.get("dependsOn") or []
     if depends_on:
         print("  depends on:")
         for d in depends_on:
             done = d.get("status") in ("completed", "archived")
             tick = "x" if done else " "
-            print(f"    [{tick}] #{d.get('number')} {d.get('title', '')} — {d.get('status')}")
+            print(f"    [{tick}] {_dep_label(d, home)} — {d.get('status')}")
 
-    blocks = item.get("blocks") or []
-    if blocks:
-        refs = ", ".join(f"#{b.get('number')}" for b in blocks)
-        print(f"  blocking:  {refs}")
+    blocks = [b for b in (item.get("blocks") or []) if not b.get("restricted")]
+    hidden = item.get("blocksRestricted") or []
+    if blocks or hidden:
+        refs = [_dep_ref(b, home) for b in blocks]
+        refs += [f"{g.get('count')} item(s) in {g.get('projectName')}" for g in hidden]
+        print(f"  blocking:  {', '.join(refs)}")
     if children:
         order = BACKLOG_STATUSES
         cstat = {s: 0 for s in order}
@@ -4091,19 +4124,49 @@ def depend_backlog(project_id, ref, on_ref, remove=False):
     if not item_id:
         print(f"Signum: backlog item '{ref}' not found in '{project_id}'", file=sys.stderr)
         sys.exit(1)
-    on_id, on_item = _resolve_backlog_id(headers, service_url, project_id, on_ref)
-    if not on_id:
-        print(f"Signum: backlog item '{on_ref}' not found in '{project_id}'", file=sys.stderr)
-        sys.exit(1)
 
+    # The blocker may be in another project: 'other-project#12'.
+    on_project, on_local = _split_cross_ref(project_id, on_ref)
+    shown = on_local if on_project == project_id else f"{on_project}{on_local}"
+    a = item.get("number")
     base = f"{service_url}/api/portal/backlog/{item_id}/dependencies"
+
     if remove:
-        sc, body = api_request(f"{base}?dependsOnId={on_id}", method="DELETE", headers=headers)
+        # Removal is by the link's own id, found on the item itself — which
+        # also works for a blocker in a project you cannot read, as long as
+        # you can say which one you mean.
+        sc, body = api_request(f"{service_url}/api/portal/projects/{project_id}/backlog/by-number/{a}", headers=headers)
+        deps = (json.loads(body) or {}).get("dependsOn", []) if sc == 200 else []
+        want = str(on_local).lstrip("#")
+        match = [
+            d for d in deps
+            if not d.get("restricted")
+            and (d.get("projectId") or project_id) == on_project
+            and (str(d.get("number")) == want or d.get("id") == want)
+        ]
+        if not match:
+            hidden = [d for d in deps if d.get("restricted") and d.get("projectId") == on_project]
+            if hidden:
+                print(f"Signum: #{a} waits on an item in a project you cannot read ({on_project}). "
+                      "Remove it with the × on the item's page in the portal.", file=sys.stderr)
+            else:
+                print(f"Signum: #{a} does not depend on {shown} — nothing to remove")
+                return
+            sys.exit(1)
+        link = match[0]
+        q = f"linkId={link['linkId']}" if link.get("linkId") else f"dependsOnId={link.get('id')}"
+        sc, body = api_request(f"{base}?{q}", method="DELETE", headers=headers)
+        on_item = link
     else:
+        on_id, on_item = _resolve_backlog_id(headers, service_url, on_project, on_local)
+        if not on_id:
+            print(f"Signum: backlog item '{shown}' not found, or you have no access to '{on_project}'", file=sys.stderr)
+            sys.exit(1)
         sc, body = api_request(base, method="POST", headers=headers, data={"dependsOnId": on_id})
+
     if sc not in (200, 201):
-        # The cycle check and the same-project rule both come back as 400 with
-        # a sentence worth showing verbatim — it names both items.
+        # The cycle check comes back as 400 with a sentence worth showing
+        # verbatim — it names both items.
         detail = ""
         try:
             detail = (json.loads(body) or {}).get("error", "")
@@ -4112,11 +4175,10 @@ def depend_backlog(project_id, ref, on_ref, remove=False):
         print(f"Signum: dependency change failed (HTTP {sc}): {detail}", file=sys.stderr)
         sys.exit(1)
 
-    a, b = item.get("number"), on_item.get("number")
     if remove:
-        print(f"Signum: #{a} no longer depends on #{b}")
+        print(f"Signum: #{a} no longer depends on {shown}")
     else:
-        print(f"Signum: #{a} now depends on #{b} — {on_item.get('title', '')}")
+        print(f"Signum: #{a} now depends on {shown} — {on_item.get('title', '')}")
     print("Signum: run 'view-backlog' to see the status the service settled on")
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.54.0 — 2026-09-25 — Björn Allvin
+
+A backlog item can now wait on an item in another project. Needs a Signum service that allows it; against one that doesn't, `backlog-depend` shows the service's refusal.
+
+- **`backlog-depend <project> <item> <other-project>#N`** links to an item in another project you can read. `#N`, `N` and a UUID keep meaning the item's own project. A blocker you cannot read, or that does not exist, gives one and the same error.
+- **`view-backlog` shows where linked items live.** An item elsewhere prints as `other-project#N title`; one in a project you cannot read prints as `(an item in <Project>)` with its status, and waiting items you cannot read are counted per project on the `blocking:` line.
+- **`backlog-undepend` removes a link by its own id**, found on the item, so it also accepts `other-project#N`. A blocker in a project you cannot read can't be named from the CLI; the command says so and points to the × on the item's page.
+
 ## 0.53.1 — 2026-09-25 — Mattias Aspelund
 
 - **`docs/getting-started.md` onboards someone invited from outside Awolve.** It covers the steps in order: portal sign-in, creating an API key, installing the plugin, logging in (including a non-macOS route, since `--from-clipboard` needs `pbpaste`), `.claude/specs.md`, a first check, everyday requests, what each role can do, and common errors. It's written so Claude Code can follow it when pointed at it. The README links to it. No behaviour change.
