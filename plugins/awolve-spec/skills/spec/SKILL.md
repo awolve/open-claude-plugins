@@ -183,7 +183,7 @@ Do not assume local spec files are current — pull first, then read.
 
 ## How it works
 
-Spec files are synced from Signum. Each synced file has YAML frontmatter with `spec_version`, `spec_doc_id`, and `last_synced`. On session start, latest specs are pulled. When you edit a spec file, it is automatically pushed.
+Spec files are synced from Signum. Each synced file has YAML frontmatter with `spec_version`, `spec_doc_id`, and `last_synced_hash`. On session start, latest specs are pulled. When you edit a spec file, it is automatically pushed.
 
 ## Configuration
 

@@ -1124,11 +1124,9 @@ def pull_project(
                     if dl_status != 200:
                         report["skipped_errors"] += 1
                         continue
-                    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     sidecar_meta = {
                         "spec_version": version,
                         "spec_doc_id": doc_id,
-                        "last_synced": now,
                         "last_synced_hash": remote_hash,
                     }
                     if feature_status:
@@ -1171,11 +1169,12 @@ def pull_project(
             report["skipped_errors"] += 1
             continue
 
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # No wall-clock timestamp in the file: every machine that pulls this
+        # version must write the same bytes, or OneDrive forks the file into
+        # `<name>-<Machine>.md` conflict copies.
         meta = {
             "spec_version": version,
             "spec_doc_id": doc_id,
-            "last_synced": now,
             "last_synced_hash": remote_hash,
         }
         if feature_status:
@@ -1753,7 +1752,9 @@ def push(file_path, base_version_override=None):
 
     new_version = resp_data.get("version", base_version + 1)
     meta["spec_version"] = new_version
-    meta["last_synced"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Drop the legacy wall-clock field (see pull): it made every machine's
+    # copy differ and OneDrive fork the file.
+    meta.pop("last_synced", None)
     # Record the body hash we just pushed so future pulls can detect local
     # drift correctly. Without this, a subsequent manual edit would look
     # indistinguishable from an unmodified synced file.
@@ -2020,8 +2021,7 @@ def show_status():
                     continue
                 rel = os.path.relpath(fpath, specs_path)
                 version = meta.get("spec_version", "?")
-                last_synced = meta.get("last_synced", "never")
-                print(f"    {rel:40s}  v{version}  synced: {last_synced}")
+                print(f"    {rel:40s}  v{version}")
                 found += 1
 
         if found == 0:
@@ -5075,11 +5075,9 @@ def create_document(project_id, feature_name, filename):
     resp = json.loads(body)
     doc_id = resp.get("id")
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {
         "spec_doc_id": doc_id,
         "spec_version": 1,
-        "last_synced": now,
     }
 
     if os.path.isfile(local_path):

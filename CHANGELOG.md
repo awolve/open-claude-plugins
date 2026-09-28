@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.55.0 — 2026-09-28 — Björn Allvin
+
+- **Synced spec files no longer carry `last_synced`.** `pull` stamped each downloaded file with the time *this* machine pulled it. When a spec changed on the server, every machine that started a session wrote the same document with a different timestamp within minutes of each other, and a synced folder (OneDrive, Dropbox) kept each version as a `<name>-<Machine>.md` conflict copy — the body identical, only that one line apart. `pull`, `create-doc` and the conflict staging now write no wall-clock field, so every machine writes the same bytes for the same version. `push` removes the field from a file it writes back; files that still have it keep it until their next update, which is harmless since no machine rewrites it.
+- **`status` no longer prints `synced: <time>`** per file. It was the only reader of the field. Drift detection is unchanged: it uses `last_synced_hash`.
+- Existing conflict copies are not removed by this release. Run `specs-cli.py cleanup-synced-tree --dry-run`, then without `--dry-run`.
+
 ## 0.54.0 — 2026-09-25 — Björn Allvin
 
 A backlog item can now wait on an item in another project. Needs a Signum service that allows it; against one that doesn't, `backlog-depend` shows the service's refusal.
