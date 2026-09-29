@@ -27,9 +27,12 @@ Usage:
                                        — Set or clear a feature's shortDescription (pass "" to clear)
     specs-cli.py set-title <feature-id> <text>
                                        — Update a feature's display title without renaming the slug
-    specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]
+    specs-cli.py set-responsible <feature-id> <email>
+    specs-cli.py set-responsible <feature-id> --unassign
+                                       — Set or clear the person responsible for a feature
+    specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT] [--responsible EMAIL]
                                        — Create a new feature in a project
-    specs-cli.py create-feature <project-id> --from-item <item-#N> [--name SLUG] [--status STATUS]
+    specs-cli.py create-feature <project-id> --from-item <item-#N> [--name SLUG] [--status STATUS] [--responsible EMAIL]
                                        — Create a feature from a backlog item and link the item to it.
                                          Keeps the item's title and status; refuses an epic or a linked item
     specs-cli.py create-doc <project-id> <feature-name> <filename>
@@ -42,8 +45,11 @@ Usage:
                                        — Delete a document from filesystem and service
     specs-cli.py delete-feature <project-id> <feature-name>
                                        — Delete a feature and all its documents
-    specs-cli.py list-features <project-id>
-                                       — List all features in a project
+    specs-cli.py list-features <project-id> [--mine | --responsible EMAIL | --unassigned] [--all]
+    specs-cli.py list-features --mine | --responsible EMAIL | --unassigned [--all]
+                                       — List features with who is responsible. A filter hides completed
+                                         features unless --all; with no project id it sweeps every
+                                         configured project in one call
     specs-cli.py list-docs <project-id> <feature-name>
                                        — List all documents in a feature
     specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
@@ -4819,6 +4825,120 @@ def set_title(feature_id, title):
     print(f"Signum: feature {feature_id} title → {title!r}")
 
 
+# Spec 048: the service reuses spec 022's assignee codes for the responsible
+# person, plus two of its own. Translated, never echoed — a bare code tells the
+# user nothing about what to do next.
+def _responsible_error(body, who=None):
+    """The plain-language message for a responsible-person error, or None."""
+    try:
+        err = (json.loads(body) or {}).get("error")
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return None
+    who_s = f"'{who}'" if who else "that person"
+    if err == "assignee_not_found":
+        return f"no Signum user found for {who_s} — they need to sign in to Signum at least once"
+    if err == "assignee_no_access":
+        return f"{who_s} cannot open this project — grant them access to this project first"
+    if err == "responsible_forbidden":
+        return "you cannot set who is responsible — you need the developer or admin role on this project"
+    if err == "invalid_responsible":
+        return "the responsible person must be an email or a user id (use --unassign to clear it)"
+    return None
+
+
+def _responsible_label(f):
+    """Who is responsible for a feature row, for a listing column.
+
+    Email first (what `--responsible` takes), then the name, else '-'. The
+    two flags are compared with `is False` on purpose: an older service leaves
+    them out, and a missing flag must not mark everyone inactive.
+    """
+    if not f.get("responsibleId"):
+        return "-"
+    label = f.get("responsibleEmail") or f.get("responsibleName") or f.get("responsibleId")
+    if f.get("responsibleActive") is False:
+        label += " (inactive)"
+    elif f.get("responsibleHasAccess") is False:
+        label += " (no access)"
+    return label
+
+
+def _filter_by_responsible(features, kind, value=None):
+    """Keep features matching a responsible filter, client-side.
+
+    `kind` is 'unassigned' or 'email'; an email filter matches the email
+    case-insensitively or a fragment of the display name, like `--assignee`.
+    """
+    if kind == "unassigned":
+        return [f for f in features if not f.get("responsibleId")]
+    needle = (value or "").strip().lower()
+    out = []
+    for f in features:
+        email = (f.get("responsibleEmail") or "").lower()
+        name = (f.get("responsibleName") or "").lower()
+        if f.get("responsibleId") and ((email and needle in email) or (name and needle in name)):
+            out.append(f)
+    return out
+
+
+def set_responsible(feature_id, email):
+    """Set (email) or clear (None) the person responsible for a feature."""
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+
+    if "/" not in feature_id:
+        print(f"Signum: feature id must be 'project/name' (got '{feature_id}')", file=sys.stderr)
+        sys.exit(1)
+
+    service_url = cfg["service_url"]
+    encoded_id = urllib.parse.quote(feature_id, safe="")
+    try:
+        status_code, resp_body = api_request(
+            f"{service_url}/api/features/lookup?id={encoded_id}",
+            method="PATCH",
+            headers={**headers, "Content-Type": "application/json"},
+            # An explicit null clears; leaving the key out would change nothing.
+            data={"responsible": email},
+        )
+    except ConnectionError as e:
+        print(f"Signum: failed to set responsible — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code == 404:
+        print(f"Signum: feature '{feature_id}' not found", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        message = _responsible_error(resp_body, email)
+        if message:
+            print(f"Signum: {message}", file=sys.stderr)
+        else:
+            print(f"Signum: failed to set responsible (HTTP {status_code}): {resp_body}", file=sys.stderr)
+        sys.exit(1)
+
+    # An older service ignores the unknown key and answers 200 — say so rather
+    # than report a change that never happened.
+    try:
+        row = json.loads(resp_body)
+    except (json.JSONDecodeError, TypeError):
+        row = None
+    if isinstance(row, dict) and "responsibleId" not in row:
+        print("Signum: this Signum service does not support a responsible person on features yet — nothing was changed", file=sys.stderr)
+        sys.exit(1)
+
+    if email is None:
+        print(f"Signum: feature {feature_id} has no responsible person now")
+    else:
+        who = _responsible_label(row) if isinstance(row, dict) else email
+        print(f"Signum: feature {feature_id} responsible → {who}")
+
+
 # Letters a plain accent-strip would mangle or drop. ø and æ are not accented
 # forms of anything, so NFKD leaves them alone and a naive slugifier then
 # deletes them — which is how an older version of this path produced
@@ -4861,7 +4981,7 @@ def _next_feature_number(service_url, headers, project_id, specs_path):
     return max(local_next, server_next)
 
 
-def create_feature_from_item(project_id, item_ref, name=None, initial_status="specifying"):
+def create_feature_from_item(project_id, item_ref, name=None, initial_status="specifying", responsible=None):
     """Create a feature from an existing backlog item, and link the item to it.
 
     The reverse of a plan creating the items that deliver a feature. What it
@@ -4902,7 +5022,7 @@ def create_feature_from_item(project_id, item_ref, name=None, initial_status="sp
     num = _next_feature_number(service_url, headers, project_id, proj["path"])
     folder_name = f"{num:03d}-{slug}"
 
-    create_feature(project_id, folder_name, initial_status=initial_status)
+    create_feature(project_id, folder_name, initial_status=initial_status, responsible=responsible)
     # create_feature titles the feature from its slug, which would drop every
     # letter the slug transliterated. The item's own words are the title.
     if title:
@@ -4911,8 +5031,12 @@ def create_feature_from_item(project_id, item_ref, name=None, initial_status="sp
     print(f"Signum: created from #{number} — the item keeps its own status ({item.get('status', '?')})")
 
 
-def create_feature(project_id, name, initial_status="specifying", description=None):
-    """Create a new feature in a project."""
+def create_feature(project_id, name, initial_status="specifying", description=None, responsible=None):
+    """Create a new feature in a project.
+
+    `responsible` (spec 048) is an email sent in the POST body, so the feature
+    is created with its owner in one call rather than POST then PATCH.
+    """
     cfg = config.read_config()
     if not cfg:
         print("Signum: no config found", file=sys.stderr)
@@ -4958,6 +5082,8 @@ def create_feature(project_id, name, initial_status="specifying", description=No
     }
     if feature_number is not None:
         payload["number"] = feature_number
+    if responsible is not None:
+        payload["responsible"] = responsible
 
     try:
         status_code, body = api_request(
@@ -4974,8 +5100,27 @@ def create_feature(project_id, name, initial_status="specifying", description=No
         print(f"Signum: feature '{feature_id}' already exists", file=sys.stderr)
         sys.exit(1)
     if status_code not in (200, 201):
-        print(f"Signum: failed to create feature (HTTP {status_code}): {body}", file=sys.stderr)
+        message = _responsible_error(body, responsible) if responsible is not None else None
+        if message:
+            print(f"Signum: feature not created — {message}", file=sys.stderr)
+        else:
+            print(f"Signum: failed to create feature (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
+
+    responsible_shown = None
+    if responsible is not None:
+        try:
+            created = json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            created = None
+        if isinstance(created, dict) and "responsibleId" not in created:
+            # An older service drops the unknown key: the feature exists, the
+            # owner does not. Warn, since failing now would hide the creation.
+            print("Signum: warning — this Signum service ignored --responsible; the feature has no responsible person", file=sys.stderr)
+        elif isinstance(created, dict):
+            responsible_shown = _responsible_label(created)
+        else:
+            responsible_shown = responsible
 
     # Set status if not the API default ("draft")
     if initial_status != "draft":
@@ -5004,6 +5149,8 @@ def create_feature(project_id, name, initial_status="specifying", description=No
     print(f"Signum: created feature '{feature_id}'")
     print(f"  path: {local_dir}")
     print(f"  status: {initial_status}")
+    if responsible_shown:
+        print(f"  responsible: {responsible_shown}")
     print(f"  portal: {service_url}/portal/{project_id}/specs/{folder_name}")
 
 
@@ -5494,8 +5641,19 @@ def feature_snapshot(project_id, feature_name, as_json=False):
         print(f"  {name:40s}  {doc_status}{suffix}")
 
 
-def list_features(project_id):
-    """List all features in a project."""
+def list_features(project_id, responsible=None, include_all=False):
+    """List the features in a project.
+
+    `responsible` (spec 048) filters by who is responsible: ('me', None),
+    ('email', <email or name fragment>) or ('unassigned', None). A filtered
+    list leaves completed features out unless `include_all`; the unfiltered
+    list shows every feature, as it always has.
+    """
+    if responsible is not None and responsible[0] == "me":
+        # Who "me" is, is the service's call — the email stored at login can
+        # be missing or typed by hand. Ask the cross-project list and keep
+        # this project.
+        return _list_mine_in_project(project_id, include_all)
     cfg = config.read_config()
     if not cfg:
         print("Signum: no config found", file=sys.stderr)
@@ -5526,24 +5684,192 @@ def list_features(project_id):
         print(f"Signum: no features in '{project_id}'")
         return
 
+    if responsible is not None:
+        if not any("responsibleId" in f for f in features):
+            print("Signum: this Signum service does not report who is responsible for features yet", file=sys.stderr)
+            sys.exit(1)
+        features = _filter_by_responsible(features, *responsible)
+        if not include_all:
+            features = [f for f in features if f.get("status") != "completed"]
+        if not features:
+            print(f"Signum: no {_responsible_phrase(responsible, include_all)} in '{project_id}'")
+            return
+
     items_by_feature = _feature_items(service_url, headers, project_id)
 
-    print(f"Signum: {len(features)} feature(s) in '{project_id}'")
+    what = f"{_responsible_phrase(responsible, include_all)}" if responsible is not None else "feature(s)"
+    print(f"Signum: {len(features)} {what} in '{project_id}'")
     print()
     for f in features:
-        name = f.get("name", "?")
-        feat_status = f.get("status", "?")
-        doc_count = f.get("documentCount", 0)
-        status_marker = {
-            "idea": ".",
-            "specifying": "*",
-            "in_progress": ">",
-            "completed": "+",
-            "archived": "x",
-        }.get(feat_status, "?")
-        summary = _stage_summary(items_by_feature.get(f.get("id"), []))
-        tail = f"  · {summary}" if summary else ""
-        print(f"  [{status_marker}] {name:40s}  {feat_status:15s}  {doc_count} doc(s){tail}")
+        print(_feature_row(f, items_by_feature))
+
+
+_FEATURE_STATUS_MARKERS = {
+    "idea": ".",
+    "specifying": "*",
+    "in_progress": ">",
+    "completed": "+",
+    "archived": "x",
+}
+
+
+def _feature_row(f, items_by_feature=None):
+    """One line of `list-features`: marker, name, status, docs, responsible, items."""
+    name = f.get("name", "?")
+    feat_status = f.get("status", "?")
+    status_marker = _FEATURE_STATUS_MARKERS.get(feat_status, "?")
+    docs = f"{f['documentCount']} doc(s)" if "documentCount" in f else ""
+    items = f.get("items")
+    if items is None and items_by_feature:
+        items = items_by_feature.get(f.get("id"), [])
+    summary = _stage_summary(items or [])
+    tail = f"  · {summary}" if summary else ""
+    return f"  [{status_marker}] {name:40s}  {feat_status:15s}  {docs:10s}  {_responsible_label(f)}{tail}".rstrip()
+
+
+def _responsible_phrase(responsible, include_all):
+    """'feature(s) you are responsible for' and friends, for the summary line."""
+    kind, value = responsible
+    if kind == "me":
+        base = "feature(s) you are responsible for"
+    elif kind == "unassigned":
+        base = "feature(s) with nobody responsible"
+    else:
+        base = f"feature(s) with '{value}' responsible"
+    return base if include_all else f"open {base}"
+
+
+def _parse_list_features_args(args):
+    """(project_id or None, responsible filter or None, include_all).
+
+    The filter is ('me', None), ('email', <text>) or ('unassigned', None).
+    `--mine`, `--responsible` and `--unassigned` are mutually exclusive; a
+    usage problem prints and exits 1.
+    """
+    project_id = None
+    filters = []
+    include_all = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--mine":
+            filters.append(("me", None))
+        elif a == "--unassigned":
+            filters.append(("unassigned", None))
+        elif a == "--responsible":
+            if i + 1 >= len(args) or args[i + 1].startswith("--"):
+                print("Signum: --responsible needs an email (or a name fragment with a project id)", file=sys.stderr)
+                sys.exit(1)
+            filters.append(("email", args[i + 1]))
+            i += 1
+        elif a == "--all":
+            include_all = True
+        elif a.startswith("--"):
+            print(f"Signum: unknown flag {a}", file=sys.stderr)
+            sys.exit(1)
+        elif project_id is None:
+            project_id = a
+        else:
+            print(f"Signum: unexpected argument '{a}'", file=sys.stderr)
+            sys.exit(1)
+        i += 1
+    if len(filters) > 1:
+        print("Signum: --mine, --responsible and --unassigned are mutually exclusive", file=sys.stderr)
+        sys.exit(1)
+    responsible = filters[0] if filters else None
+    if project_id is None and responsible is None:
+        print("Usage: specs-cli.py list-features <project-id> [--mine | --responsible EMAIL | --unassigned] [--all]\n"
+              "       specs-cli.py list-features --mine | --responsible EMAIL | --unassigned [--all]", file=sys.stderr)
+        sys.exit(1)
+    return project_id, responsible, include_all
+
+
+def _portal_features(service_url, headers, responsible, include_all):
+    """GET /api/portal/features — features across every project the caller can open."""
+    kind, value = responsible
+    params = {"responsible": "me" if kind == "me" else "unassigned" if kind == "unassigned" else value}
+    if include_all:
+        params["includeCompleted"] = "1"
+    try:
+        status_code, body = api_request(
+            f"{service_url}/api/portal/features?{urllib.parse.urlencode(params)}",
+            headers=headers,
+        )
+    except ConnectionError as e:
+        print(f"Signum: failed to list features — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print("Signum: this Signum service has no cross-project feature list yet — pass a project id", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        message = _responsible_error(body, value)
+        print(f"Signum: {message}" if message else f"Signum: failed to list features (HTTP {status_code}): {body}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        print("Signum: failed to list features — the service sent something that is not JSON", file=sys.stderr)
+        sys.exit(1)
+    rows = data.get("features") if isinstance(data, dict) else data
+    return [f for f in (rows or []) if isinstance(f, dict)]
+
+
+def _list_mine_in_project(project_id, include_all=False):
+    """`list-features <project> --mine`: the cross-project list, this project only."""
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+    service_url = cfg["service_url"]
+    responsible = ("me", None)
+    features = [f for f in _portal_features(service_url, headers, responsible, include_all)
+                if f.get("projectId") == project_id]
+    phrase = _responsible_phrase(responsible, include_all)
+    if not features:
+        print(f"Signum: no {phrase} in '{project_id}'")
+        return
+    items_by_feature = _feature_items(service_url, headers, project_id)
+    print(f"Signum: {len(features)} {phrase} in '{project_id}'")
+    print()
+    for f in features:
+        print(_feature_row(f, items_by_feature))
+
+
+def list_features_across(responsible, include_all=False):
+    """Features by responsible person across the projects configured here.
+
+    One call to the service's cross-project list, then only the projects in
+    this machine's config are kept — the same sweep `backlog` and `bugs` do
+    with no project id, without one request per project.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+
+    rows = _portal_features(cfg["service_url"], headers, responsible, include_all)
+    configured = {p["id"] for p in cfg["projects"]}
+    features = [f for f in rows if f.get("projectId") in configured]
+    elsewhere = len(rows) - len(features)
+
+    phrase = _responsible_phrase(responsible, include_all)
+    note = f" ({elsewhere} more in projects not configured here)" if elsewhere else ""
+    print(f"Signum: {len(features)} {phrase} across configured projects{note}")
+    project = None
+    for f in sorted(features, key=lambda r: (r.get("projectName") or r.get("projectId") or "", r.get("name") or "")):
+        if f.get("projectId") != project:
+            project = f.get("projectId")
+            label = f.get("projectName") or project
+            print(f"\n{label}" + (f" ({project})" if label != project else ""))
+        print(_feature_row(f))
 
 
 def _feature_items(service_url, headers, project_id):
@@ -5553,6 +5879,9 @@ def _feature_items(service_url, headers, project_id):
     feature's items; the CLI's own feature listing does not. An older service,
     or any failure here, yields {} and the listing simply omits the summary —
     a count is a nicety, not a reason to fail the command.
+
+    The list is a bare array on older services and `{features, viewer}` from
+    spec 048 on; both are read.
     """
     try:
         status_code, body = api_request(
@@ -5561,8 +5890,12 @@ def _feature_items(service_url, headers, project_id):
         )
         if status_code != 200:
             return {}
-        return {f["id"]: f.get("items") or [] for f in json.loads(body) if isinstance(f, dict) and "id" in f}
-    except (ConnectionError, json.JSONDecodeError, TypeError, KeyError):
+        data = json.loads(body)
+        rows = data.get("features") if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            return {}
+        return {f["id"]: f.get("items") or [] for f in rows if isinstance(f, dict) and "id" in f}
+    except (ConnectionError, json.JSONDecodeError, TypeError, KeyError, AttributeError):
         return {}
 
 
@@ -7754,6 +8087,7 @@ def main():
         description_val = None
         from_item = None
         name_val = None
+        responsible_val = None
         for i, a in enumerate(args):
             if a == "--status" and i + 1 < len(args):
                 status_val = args[i + 1]
@@ -7763,19 +8097,36 @@ def main():
                 from_item = args[i + 1]
             elif a == "--name" and i + 1 < len(args):
                 name_val = args[i + 1]
+            elif a == "--responsible":
+                if i + 1 >= len(args) or args[i + 1].startswith("--"):
+                    print("Signum: --responsible needs an email", file=sys.stderr)
+                    sys.exit(1)
+                responsible_val = args[i + 1]
         if from_item is not None:
             # Feature from an existing item: the name comes from the item's
             # title unless --name overrides it.
             if len(args) < 2 or args[1].startswith("--"):
-                print("Usage: specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS]", file=sys.stderr)
+                print("Usage: specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS] [--responsible EMAIL]", file=sys.stderr)
                 sys.exit(1)
-            create_feature_from_item(args[1], from_item, name=name_val, initial_status=status_val)
+            create_feature_from_item(args[1], from_item, name=name_val, initial_status=status_val,
+                                     responsible=responsible_val)
         else:
-            if len(args) < 3:
-                print("Usage: specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT]\n"
-                      "       specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS]", file=sys.stderr)
+            if len(args) < 3 or args[2].startswith("--"):
+                print("Usage: specs-cli.py create-feature <project-id> <name> [--status STATUS] [--description TEXT] [--responsible EMAIL]\n"
+                      "       specs-cli.py create-feature <project-id> --from-item <item-ref> [--name SLUG] [--status STATUS] [--responsible EMAIL]", file=sys.stderr)
                 sys.exit(1)
-            create_feature(args[1], args[2], initial_status=status_val, description=description_val)
+            create_feature(args[1], args[2], initial_status=status_val, description=description_val,
+                           responsible=responsible_val)
+    elif cmd == "set-responsible":
+        # `--unassign` is the valueless twin of an email, as in backlog-update:
+        # it sends an explicit null.
+        positional = [a for a in args[1:] if a != "--unassign"]
+        unassign = "--unassign" in args
+        if not positional or (unassign and len(positional) != 1) or (not unassign and len(positional) != 2):
+            print("Usage: specs-cli.py set-responsible <feature-id> <email>\n"
+                  "       specs-cli.py set-responsible <feature-id> --unassign", file=sys.stderr)
+            sys.exit(1)
+        set_responsible(positional[0], None if unassign else positional[1])
     elif cmd == "set-description":
         if len(args) < 3:
             print("Usage: specs-cli.py set-description <feature-id> <text>", file=sys.stderr)
@@ -7816,10 +8167,11 @@ def main():
             sys.exit(1)
         delete_feature(args[1], args[2])
     elif cmd == "list-features":
-        if len(args) < 2:
-            print("Usage: specs-cli.py list-features <project-id>", file=sys.stderr)
-            sys.exit(1)
-        list_features(args[1])
+        proj, responsible_filter, include_all = _parse_list_features_args(args[1:])
+        if proj is None:
+            list_features_across(responsible_filter, include_all=include_all)
+        else:
+            list_features(proj, responsible=responsible_filter, include_all=include_all)
     elif cmd == "list-docs":
         if len(args) < 3:
             print("Usage: specs-cli.py list-docs <project-id> <feature-name>", file=sys.stderr)

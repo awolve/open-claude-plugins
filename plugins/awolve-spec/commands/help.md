@@ -33,7 +33,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 ### Features & Documents
 | Command | Description |
 |---------|-------------|
-| `/awolve-spec:list-features` | List all features in a project |
+| `/awolve-spec:list-features` | List features in a project, or the ones someone is responsible for (`--mine`, `--responsible`, `--unassigned`) |
 | `/awolve-spec:create-feature` | Create a new feature |
 | `/awolve-spec:rename-feature` | Rename a feature |
 | `/awolve-spec:delete-feature` | Delete a feature and all its documents |
@@ -43,6 +43,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:set-status` | Change the status of a feature or document |
 | `/awolve-spec:set-description` | Set or clear a feature's short description |
 | `/awolve-spec:set-title` | Update a feature's display title without renaming the slug |
+| `/awolve-spec:set-responsible` | Set or clear the person responsible for a feature |
 
 ### Backlog & Bugs
 | Command | Description |

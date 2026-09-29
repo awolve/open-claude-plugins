@@ -33,7 +33,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 ### Features & Documents
 | Command | Description |
 |---------|-------------|
-| `/awolve-signum:list-features` | List all features in a project |
+| `/awolve-signum:list-features` | List features in a project, or the ones someone is responsible for (`--mine`, `--responsible`, `--unassigned`) |
 | `/awolve-signum:create-feature` | Create a new feature |
 | `/awolve-signum:rename-feature` | Rename a feature |
 | `/awolve-signum:delete-feature` | Delete a feature and all its documents |
@@ -43,6 +43,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:set-status` | Change the status of a feature or document |
 | `/awolve-signum:set-description` | Set or clear a feature's short description |
 | `/awolve-signum:set-title` | Update a feature's display title without renaming the slug |
+| `/awolve-signum:set-responsible` | Set or clear the person responsible for a feature |
 
 ### Backlog & Bugs
 | Command | Description |

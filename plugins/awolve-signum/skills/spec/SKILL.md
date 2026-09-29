@@ -69,7 +69,8 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-signum:rename-doc` — Rename a document
 - `/awolve-signum:delete-doc` — Delete a document
 - `/awolve-signum:delete-feature` — Delete a feature and all its documents
-- `/awolve-signum:list-features` — List all features in a project
+- `/awolve-signum:list-features` — List features in a project with who is responsible; `--mine`/`--responsible <email>`/`--unassigned` (no project id = every configured project), `--all` includes completed
+- `/awolve-signum:set-responsible` — Set (`<email>`) or clear (`--unassign`) the person responsible for a feature
 - `/awolve-signum:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
 - `/awolve-signum:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
 - `/awolve-signum:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
@@ -110,14 +111,15 @@ Full subcommand surface:
 | `set-status <id> <status>` | Change feature or document status |
 | `set-description <feature-id> <text>` | Set or clear feature shortDescription |
 | `set-title <feature-id> <text>` | Update a feature's display title without renaming the slug (separate from `rename-feature` which changes both name + title in one call) |
-| `create-feature <project-id> <name> [--status] [--description]` | Create feature (service auto-assigns the number — do NOT include a numeric prefix in `<name>`) |
+| `set-responsible <feature-id> <email>\|--unassign` | Set or clear the person responsible for a feature. Needs the developer or admin role on the project; the person must be able to open it and have signed in once |
+| `create-feature <project-id> <name> [--status] [--description] [--responsible EMAIL]` | Create feature (service auto-assigns the number — do NOT include a numeric prefix in `<name>`) |
 | `create-feature <project-id> --from-item <N> [--name SLUG]` | Create a feature from backlog item #N: folder name from the item's title (Nordic letters transliterated, not dropped), the item's title kept as the feature's, and the item linked as what delivers it. Refuses an epic and an already-linked item; never changes the item's status |
 | `create-doc <project-id> <feature-name> <filename>` | Add a document to a feature |
 | `rename-feature <project-id> <old> <new>` | Rename feature folder + service |
 | `rename-doc <file-path> <new-filename>` | Rename a document. Refuses (exit 1) when another file in the folder carries the same `spec_doc_id` — a sync conflict copy; `rm` the stray file instead. |
 | `delete-doc <file-path>` | Delete a document. Same duplicate-id refusal as `rename-doc`: acting on the id would delete the original, not the copy. |
 | `delete-feature <project-id> <feature-name>` | Delete a feature and its docs |
-| `list-features <project-id>` | List all features in a project |
+| `list-features [project-id] [--mine\|--responsible EMAIL\|--unassigned] [--all]` | List features with a responsible column. A filter with no project id sweeps every configured project in one call — that's how to answer "which features am I responsible for". Filtered lists hide completed features unless `--all`; the three filters are mutually exclusive |
 | `list-docs <project-id> <feature-name>` | List all docs in a feature |
 | `bugs [project-id] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
 | `view-bug <project-id> <bug-number> [--json]` | Full bug details |

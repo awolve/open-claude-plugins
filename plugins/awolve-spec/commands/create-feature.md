@@ -16,12 +16,14 @@ If the user didn't provide arguments, ask:
 The script auto-assigns the next spec number (e.g. `004-user-notifications`).
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py create-feature <project-id> <feature-name> [--status STATUS] [--description TEXT]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py create-feature <project-id> <feature-name> [--status STATUS] [--description TEXT] [--responsible EMAIL]
 ```
 
 Default status is `specifying`. Use `--status idea` for placeholder features.
 
 Optional `--description "One or two sentences…"` sets the feature's short description (visible on the portal list view). Can also be set later via `/awolve-spec:set-description`.
+
+Optional `--responsible <email>` names the person responsible for the feature when it is created (also works with `--from-item`). They must be able to open the project and have signed in to Signum once, and setting it needs the developer or admin role on the project. Can also be set or changed later via `/awolve-spec:set-responsible`.
 
 After creation, suggest next steps:
 - `/awolve-spec:req` to write requirements

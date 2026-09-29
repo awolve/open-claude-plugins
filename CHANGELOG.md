@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.56.0 — 2026-09-29 — Björn Allvin
+
+A feature can now have one person responsible for it. Needs a Signum service that supports it; against one that doesn't, each command says so rather than reporting a change that didn't happen.
+
+- **`set-responsible <feature-id> <email>`** names the person responsible for a feature, and **`set-responsible <feature-id> --unassign`** clears it. The person must be able to open the project and have signed in to Signum once; setting it needs the developer or admin role on the project. The service's refusals are translated into what to do next ("they need to sign in to Signum at least once", "grant them access to this project first", "you need the developer or admin role on this project").
+- **`create-feature … --responsible <email>`** sets it when the feature is created, in the same request. Also works with `--from-item`.
+- **`list-features` prints a responsible column**: the email, `-` when nobody is responsible, and `(inactive)` or `(no access)` when that person was deactivated or lost access to the project.
+- **`list-features --mine | --responsible <email> | --unassigned`** filters by responsible person. With no project id it covers every project configured on this machine in one request, grouped by project; with a project id, `--responsible` also matches part of a name. Filtered lists leave out completed features unless `--all` is given. The three filters can't be combined. `list-features <project-id>` with no filter is unchanged.
+- `list-features` reads the portal's per-project feature list in both its old shape (a bare list) and its new one (`{features, viewer}`), so the item summary keeps working against old and new services.
+
 ## 0.55.0 — 2026-09-28 — Björn Allvin
 
 - **Synced spec files no longer carry `last_synced`.** `pull` stamped each downloaded file with the time *this* machine pulled it. When a spec changed on the server, every machine that started a session wrote the same document with a different timestamp within minutes of each other, and a synced folder (OneDrive, Dropbox) kept each version as a `<name>-<Machine>.md` conflict copy — the body identical, only that one line apart. `pull`, `create-doc` and the conflict staging now write no wall-clock field, so every machine writes the same bytes for the same version. `push` removes the field from a file it writes back; files that still have it keep it until their next update, which is harmless since no machine rewrites it.

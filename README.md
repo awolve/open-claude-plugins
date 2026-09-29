@@ -76,7 +76,8 @@ Run `/awolve-signum:help` for the full list, or see below:
 
 | Command | Description |
 |---------|-------------|
-| `/awolve-signum:list-features` | List all features in a project |
+| `/awolve-signum:list-features` | List features in a project, or the ones someone is responsible for |
+| `/awolve-signum:set-responsible` | Set or clear the person responsible for a feature |
 | `/awolve-signum:create-feature` | Create a new feature |
 | `/awolve-signum:rename-feature` | Rename a feature |
 | `/awolve-signum:delete-feature` | Delete a feature and all its documents |
