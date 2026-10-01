@@ -6033,9 +6033,11 @@ def attach_file(file_path, feature_identifier=None):
         print(f"Signum: failed to list features (HTTP {status})", file=sys.stderr)
         sys.exit(1)
 
-    features_list = json.loads(body)
+    # A bare array on older services, `{features, viewer}` from spec 048 on.
+    data = json.loads(body)
+    features_list = data.get("features") if isinstance(data, dict) else data
     feature = None
-    for f in features_list:
+    for f in features_list or []:
         if f.get("name") == feature_name or f.get("id", "").endswith(f"/{feature_name}"):
             feature = f
             break

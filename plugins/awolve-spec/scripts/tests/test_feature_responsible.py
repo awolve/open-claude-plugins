@@ -365,5 +365,34 @@ class ListFeaturesTest(unittest.TestCase):
         self.assertIn("does not report who is responsible", err)
 
 
+class AttachFeatureLookupTest(unittest.TestCase):
+    """attach finds the feature in both shapes of the portal features list."""
+
+    def _call(self, list_body):
+        def fake(url, method="GET", headers=None, data=None):
+            if url.endswith("/api/portal/projects/alpha/features"):
+                return 200, list_body
+            return 200, "[]"
+
+        resp = mock.MagicMock()
+        resp.__enter__.return_value = resp
+        resp.read.return_value = json.dumps({"id": "att-1", "sizeBytes": 3}).encode()
+        resp.status = 201
+        with _env(), mock.patch.object(specs_cli, "api_request", side_effect=fake), \
+             mock.patch.object(specs_cli.urllib.request, "urlopen", return_value=resp):
+            return _run(specs_cli.attach_file, __file__, "alpha/001-a")
+
+    def test_wrapped_list_from_spec_048(self):
+        rows = [{"id": "alpha/001-a", "name": "001-a"}]
+        code, out, err = self._call(json.dumps({"features": rows, "viewer": {}}))
+        self.assertIsNone(code, err)
+        self.assertIn("uploaded", out)
+
+    def test_bare_list_from_older_services(self):
+        code, out, err = self._call(json.dumps([{"id": "alpha/001-a", "name": "001-a"}]))
+        self.assertIsNone(code, err)
+        self.assertIn("uploaded", out)
+
+
 if __name__ == "__main__":
     unittest.main()
