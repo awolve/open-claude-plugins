@@ -1,10 +1,10 @@
 ---
-description: Update a backlog item's title, description, priority, status, assignee, epic flag, or deployment info (stage + URL)
+description: Update a backlog item's title, description, priority, status, assignee, tags, dates, feature link, or deployment info (stage + URL)
 ---
 
 # /awolve-spec:backlog-update
 
-Edit fields on an existing backlog item. Use this when the framing of an item has shifted, the priority has changed, the status needs to advance, or you want to promote/demote the epic flag without going through the portal.
+Edit fields on an existing backlog item. Use this when the framing of an item has shifted, the priority has changed, or the status needs to advance, without going through the portal. To put an item under an epic, use `/awolve-spec:epic-set`; to turn an item with sub-items into an epic, `/awolve-spec:epic-promote`.
 
 ## Instructions
 
@@ -15,7 +15,7 @@ Parse the user's argument. Expected forms:
 
 Item references accept UUIDs or `#N` numeric form (with or without `#`).
 
-At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|ready_for_testing|completed|archived), `--epic` (true|false), `--assignee <email>`, `--unassign`, or one of the tag flags below.
+At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|ready_for_testing|completed|archived), `--assignee <email>`, `--unassign`, or one of the tag flags below.
 
 **Tags:** `--tags a,b` replaces the whole set; `--add-tag T` and `--remove-tag T` are repeatable deltas applied against whatever the item wears right now; `--clear-tags` removes them all. `--tags` cannot be combined with `--add-tag`/`--remove-tag` — one replaces, the others adjust. Tags must already exist on the project: an unknown name fails with `tag_not_found` and a list of close matches, because coining a tag is a separate, permission-gated act (`/awolve-spec:tag-create`).
 
@@ -28,7 +28,7 @@ At least one field flag is required: `--title`, `--description`, `--priority` (l
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME | --clear-feature]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME | --clear-feature]
 ```
 
 Examples:
@@ -43,9 +43,6 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 1
 # Replace the description
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --description "Add backlog-update and backlog-delete to the CLI."
 
-# Promote an item to an epic
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --epic true
-
 # Put it on someone's plate — or take it off
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --assignee michael.dovland@awolve.ai
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 14 --unassign
@@ -58,10 +55,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update spec-service 1
 
 ## Notes
 
-- To reparent an item under a different epic, use `/awolve-spec:backlog-set-parent` — clearer error reporting and validation.
+- To make an item a sub-item of another, use `/awolve-spec:backlog-set-parent`; to put it under an epic, `/awolve-spec:epic-set`.
+- **`--epic true|false` was removed.** Items are no longer marked as epics; the CLI refuses the flag and points to `epic-set`, `epic-promote` and `epic-create`.
+- Linking a feature (`--feature`) also decides the item's epic: an item under a feature takes the feature's epic, and an epic the item had on its own is dropped.
 - **Assignment is optional and validated.** The assignee must be a portal user who can see the project: internal Awolve users always qualify; external users need project access first. `assignee_not_found` means they've never signed in to the portal; `assignee_no_access` means grant them access, then assign.
 - `--assignee` and `--unassign` are mutually exclusive. Omitting both leaves the current assignee untouched.
-- Server-side constraints on `--epic`: epics must be top-level (no parent), can't toggle on an item that has children, can't demote-with-children.
 - **Applying a tag needs only the right to edit the item** — it is the tag *vocabulary* that is permission-gated, not its use. See `/awolve-spec:tags` for the project's list.
 - To remove an item entirely, use `/awolve-spec:backlog-delete` (soft-delete).
 - The server records each change in the audit log.

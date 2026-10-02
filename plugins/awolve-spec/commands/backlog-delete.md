@@ -6,7 +6,7 @@ description: Soft-delete a backlog item (cascades to children)
 
 Remove a backlog item from the active list. The deletion is a **soft-delete** — the row stays in the database with `deletedAt` set and the audit log records who deleted it. An admin can restore via the API if needed.
 
-If the item is an **epic** with active children, the server cascades the soft-delete to all children in the same transaction and writes a single audit event listing the affected ids.
+If the item has active **sub-items**, the server cascades the soft-delete to all children in the same transaction and writes a single audit event listing the affected ids.
 
 ## Instructions
 
@@ -17,7 +17,7 @@ Parse the user's argument. Expected forms:
 
 References accept UUIDs or `#N` numeric form (with or without `#`).
 
-**Confirm before running.** This is a destructive action visible in the portal and audit log. Show the user the title and child count (if it's an epic) and ask for confirmation. Only proceed once they say yes.
+**Confirm before running.** This is a destructive action visible in the portal and audit log. Show the user the title and sub-item count (if it has any) and ask for confirmation. Only proceed once they say yes.
 
 Run:
 
@@ -31,7 +31,7 @@ Examples:
 # Delete a single item
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-delete spec-service 14
 
-# Delete an epic (children cascade)
+# Delete an item with sub-items (they cascade)
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-delete spec-service 7
 ```
 

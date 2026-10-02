@@ -55,17 +55,31 @@ Usage:
     specs-cli.py feature-snapshot <project-id> <feature-name> [--json]
                                        — One-call snapshot: feature status, doc statuses, unresolved comment counts
     specs-cli.py backlog [project-id] [--epics|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged] [--source widget]
-                                       — List backlog items (default: tree view, grouped by epic;
-                                         --assignee and --tag force flat view so no match is hidden
-                                         under a filtered-out epic; --tag is repeatable and OR-ed)
+                                       — List backlog items (default: tree view, grouped by epic (E<n>),
+                                         then feature, sub-items under their item; then items with no epic.
+                                         --epics lists the epics. --assignee and --tag force flat view so
+                                         no match is hidden under a filtered-out parent; --tag is repeatable
+                                         and OR-ed. A service without real epics groups by parent item)
     specs-cli.py view-backlog <project-id> <item-id-or-#N> [--json]
-                                       — Show full details of a single backlog item (description, parent, etc.)
-    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--assignee EMAIL] [--tags a,b]
-                                       — Create a backlog item; optional --parent makes it a child of an epic.
+                                       — Show full details of a single backlog item (description, parent, epic, etc.)
+    specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N> | --epic E<n>] [--assignee EMAIL] [--tags a,b]
+                                       — Create a backlog item; --parent makes it a sub-item of any top-level
+                                         item, --epic files it under a real epic.
                                          --tags applies existing tags (create them first with tag-create)
     specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>
-                                       — Reparent a backlog item (or pass 'none' to clear the parent)
-    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL|--unassign]
+                                       — Make an item a sub-item of a top-level item (or 'none' to clear)
+    specs-cli.py epics <project-id> [--all] [--json]
+                                       — List the project's epics: number, title, status, owner, feature and
+                                         item counts, due date (--all includes archived ones)
+    specs-cli.py epic-create <project-id> <title> [--description T] [--status S] [--due YYYY-MM-DD] [--owner EMAIL]
+                                       — Create an epic (status: idea|planned|in_progress|completed|archived)
+    specs-cli.py epic-set <project-id> <#item | feature-name-or-number> <E<n>|none>
+                                       — Put an item or a feature under an epic. An item under a feature or
+                                         a parent takes theirs; the service refuses and says what to move
+    specs-cli.py epic-promote <project-id> <#item> [--yes]
+                                       — Turn an item with sub-items into an epic. Shows the plan; changes
+                                         nothing without --yes (internal users only)
+    specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
                                        [--feature NAME|PROJECT/NAME | --clear-feature]
@@ -3601,10 +3615,15 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
                  as_json=False, source_filter=None):
     """List backlog items for a project or all configured projects.
 
-    Spec 013:
+    Spec 049 (a service with real epics):
+      view='tree'  (default) — group by epic (E<n> header), then by feature,
+                     sub-items indented under their item; then items with no epic
+      view='epics' — the project's epics, as `epics <project>` prints them
+    Spec 013 (a service from before real epics, whose /epics answers 404):
       view='tree'  (default) — group items by parent: epic header + indented children
-      view='epics' — show only top-level items that have at least one child
-      view='flat'  — flat list, no grouping (legacy behavior)
+      view='epics' — show only items marked as epics
+    Either way:
+      view='flat'  — flat list, no grouping
     Filters: optional status (single value), priority (single value),
     assignee (spec 022 — an email, or the literal 'none' for unassigned),
     spec 023's overdue / late-to-start, which are derived here rather than
@@ -3692,9 +3711,22 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
             continue
 
         print()
+        # Spec 049: real epics. A service that has them answers /epics; one
+        # from before them answers 404, and the old isEpic grouping stays.
+        epics = None
+        if view != "flat":
+            epics, epic_err = _fetch_epics(headers, service_url, proj["id"])
+            if epic_err:
+                print(f"Signum: could not read epics for '{proj['id']}' ({epic_err}) — grouping by parent only", file=sys.stderr)
         if view == "flat":
+            epic_model = any("effectiveEpicId" in i for i in active)
             for item in active:
-                _print_backlog_row(item, indent=0)
+                _print_backlog_row(item, indent=0, epic_model=epic_model)
+        elif epics is not None and view == "epics":
+            # `--epics` meant "the roadmap level"; that level is now the epics.
+            _print_epics_table(epics, include_all=include_all)
+        elif epics is not None:
+            _print_epic_tree(active, epics, include_all=include_all)
         elif view == "epics":
             epics = [i for i in active if i.get("isEpic")]
             if not epics:
@@ -3781,25 +3813,39 @@ def _filter_by_assignee(items, assignee_filter):
     return out
 
 
-def _print_backlog_row(item, indent=0):
+def _print_backlog_row(item, indent=0, epic_model=False, show_feature=True, show_epic=True):
+    """Two lines per item.
+
+    `epic_model` (spec 049): the service has real epics, so an item marked as
+    an epic is just an item with sub-items — no [EPIC] tag, and its children
+    are counted as `(N sub-items: ...)`. `show_feature` / `show_epic` drop the
+    suffixes a grouped view already says in its headers.
+    """
     pad = " " * indent
     priority = item.get("priority", "?")
     status = item.get("status", "?")
     title = item.get("title", "untitled")
     number = item.get("number")
-    is_epic = item.get("isEpic", False)
+    is_epic = item.get("isEpic", False) and not epic_model
     pri_marker = {"high": "!!!", "medium": "!!", "low": "!"}.get(priority, "?")
     # The feature this item delivers, as a number — the list's equivalent of
     # the portal's "Part of" column. Replaces the old "→ project/name" suffix
     # from the promote era.
-    feature_ref = _feature_ref(item)
+    feature_ref = _feature_ref(item) if show_feature else None
     feature_suffix = f" · feature {feature_ref}" if feature_ref else ""
+    epic_number = item.get("effectiveEpicNumber") if (epic_model and show_epic) else None
+    epic_suffix = f" · E{epic_number}" if epic_number else ""
     histogram = ""
     counts = item.get("childStatusCounts") or {}
     if counts:
         order = BACKLOG_STATUSES
         parts = [f"{counts[s]} {s}" for s in order if counts.get(s)]
-        histogram = " · children: " + " · ".join(parts) if parts else ""
+        if epic_model:
+            total = sum(v for v in counts.values() if isinstance(v, int))
+            noun = "sub-item" if total == 1 else "sub-items"
+            histogram = f" ({total} {noun}: {' · '.join(parts)})" if parts else ""
+        else:
+            histogram = " · children: " + " · ".join(parts) if parts else ""
     elif is_epic:
         histogram = " · (no items yet)"
     num_str = f"#{number} " if number else ""
@@ -3817,7 +3863,271 @@ def _print_backlog_row(item, indent=0):
     dep_stage = item.get("deployedStage")
     dep = f" [{dep_stage}]" if dep_stage else ""
     print(f"  {pad}[{pri_marker}] {num_str}{epic_tag}{title}{_tag_suffix(item)}{histogram}")
-    print(f"       {pad}{status}{dep}{feature_suffix}{assigned}{timing}")
+    print(f"       {pad}{status}{dep}{epic_suffix}{feature_suffix}{assigned}{timing}")
+
+
+# ── Spec 049: real epics ────────────────────────────────────────────────────
+#
+# An epic is its own object one level above features: project → epic →
+# feature → item (→ one level of sub-items). An item sits under a feature,
+# directly under an epic, or at the top; an item under a feature takes the
+# feature's epic, and a sub-item its parent's. Epics print as E<n>.
+#
+# Every command here works against a service from before real epics too: its
+# /epics routes answer 404 with the web framework's HTML page, and the CLI
+# either falls back to the old "item marked as an epic" behaviour or says the
+# service has no real epics yet. `isEpic` is read only on that fallback path.
+
+EPIC_STATUSES = ("idea", "planned", "in_progress", "completed", "archived")
+_EPIC_REF_RE = re.compile(r"^[Ee](\d+)$")
+
+NO_EPICS_YET = ("this Signum service has no real epics yet (it predates them). "
+                "Update the service, or use the portal")
+
+
+def _epic_number(ref):
+    """3 for 'E3' or 'e3'; None for anything else."""
+    m = _EPIC_REF_RE.match(str(ref or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def _is_route_missing(status_code, body):
+    """True when a 404 is the 'no such route' page, not the service's own answer.
+
+    A service that has the epic routes answers its 404s (an unknown epic, an
+    unknown item) as JSON; one from before them answers with an HTML page.
+    """
+    if status_code != 404:
+        return False
+    try:
+        json.loads(body)
+        return False
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return True
+
+
+def _error_code(body):
+    """(code, detail) from an error body; the raw body when it isn't JSON."""
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return (body, None)
+    if isinstance(payload, dict):
+        return (payload.get("error", body), payload.get("detail"))
+    return (body, None)
+
+
+def _fetch_epics(headers, service_url, project_id):
+    """(epics, error). epics is None with no error when the service has no epics."""
+    url = f"{service_url}/api/portal/projects/{urllib.parse.quote(project_id, safe='')}/epics"
+    try:
+        status_code, body = api_request(url, headers=headers)
+    except ConnectionError as e:
+        return (None, str(e))
+    if status_code == 404:
+        return (None, None)
+    if status_code != 200:
+        return (None, f"HTTP {status_code}: {_error_code(body)[0]}")
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        return (None, "unreadable answer")
+    if isinstance(data, dict):
+        data = data.get("epics") or []
+    return ([e for e in data if isinstance(e, dict)] if isinstance(data, list) else [], None)
+
+
+def _require_epics(headers, service_url, project_id):
+    """The project's epics, or exit with the reason there are none to work with."""
+    epics, err = _fetch_epics(headers, service_url, project_id)
+    if err:
+        print(f"Signum: failed to read epics for '{project_id}' ({err})", file=sys.stderr)
+        sys.exit(1)
+    if epics is None:
+        print(f"Signum: {NO_EPICS_YET} — nothing was changed", file=sys.stderr)
+        sys.exit(1)
+    return epics
+
+
+def _find_epic(epics, ref, project_id):
+    """The epic named by 'E3', or exit saying why not."""
+    n = _epic_number(ref)
+    if n is None:
+        print(f"Signum: '{ref}' is not an epic number — write it as E<n>, e.g. E3", file=sys.stderr)
+        sys.exit(1)
+    for e in epics:
+        if e.get("number") == n:
+            return e
+    print(f"Signum: E{n} not found in '{project_id}' — list the epics with `epics {project_id}`", file=sys.stderr)
+    sys.exit(1)
+
+
+def _epic_label(epic):
+    return f"E{epic.get('number')} {epic.get('title', '')}".rstrip()
+
+
+def _epics_by_id(epics):
+    return {e.get("id"): e for e in epics if e.get("id")}
+
+
+# The service's refusal codes, said plainly with the way out. Codes not listed
+# here are printed as the service sent them.
+EPIC_ERROR_HINTS = {
+    "epic_inherited_from_feature": "the item delivers a feature, and an item under a feature takes the feature's epic. "
+                                   "Move the feature instead (epic-set <project> <feature> E<n>), or unlink the item first "
+                                   "(backlog-update <project> #N --clear-feature)",
+    "epic_inherited_from_parent": "the item is a sub-item, and a sub-item takes its parent's epic. "
+                                  "Move the parent instead, or detach it first (backlog-set-parent <project> #N none)",
+    "epic_not_found": "that epic does not exist or was deleted (list them with `epics <project>`)",
+    "epic_wrong_project": "that epic belongs to another project; an item or feature can only sit under an epic of its own project",
+    "has_sub_items": "the item has sub-items of its own, so it cannot become a sub-item (one level only). Move its sub-items first",
+    "parent_must_be_top_level": "the parent is itself a sub-item; only a top-level item can have sub-items (one level only)",
+    "parent_not_found": "the parent item does not exist or was deleted",
+    "parent_wrong_project": "the parent item belongs to another project",
+    "parent_self_reference": "an item cannot be its own parent",
+    "parent_not_an_epic": "this Signum service only accepts an item marked as an epic as a parent. "
+                          "A service with real epics accepts any top-level item",
+    "epic_cannot_have_parent": "the item is marked as an epic (the old kind), which cannot have a parent. "
+                               "Make it a real epic with epic-promote, or clear the flag in the portal",
+    "child_cannot_be_epic": "a sub-item cannot be marked as an epic",
+    "feature_differs_from_parent": "the sub-item delivers a different feature from its parent; a sub-item shares its parent's feature",
+    "sub_items_have_other_feature": "some sub-items deliver a different feature; a sub-item shares its parent's feature",
+    "promote_sub_item": "a sub-item cannot be promoted; promote its parent",
+    "promote_needs_sub_items": "only an item with sub-items can be promoted to an epic. "
+                               "For a new epic, use epic-create",
+    "promote_archived": "an archived item cannot be promoted",
+    "invalid_epic_status": f"an epic's status is one of {', '.join(EPIC_STATUSES)}",
+    "title_required": "a title is required",
+    "invalid_date": "dates are YYYY-MM-DD",
+    "timing_forbidden": "only internal users can set dates",
+    "owner_not_found": "no portal user with that email; they need to have signed in to Signum at least once",
+    "owner_no_access": "that person has no access to this project; grant access first",
+}
+
+
+def _is_epic_refusal(body):
+    code = _error_code(body)[0]
+    return isinstance(code, str) and code in EPIC_ERROR_HINTS
+
+
+def _print_epic_refusal(status_code, body, what="request"):
+    """Print a refusal with its hint. Always prints something; returns the code."""
+    code, _detail = _error_code(body)
+    hint = EPIC_ERROR_HINTS.get(code) if isinstance(code, str) else None
+    if hint:
+        print(f"Signum: refused — {hint} ({code})", file=sys.stderr)
+    else:
+        print(f"Signum: {what} failed (HTTP {status_code}): {code}", file=sys.stderr)
+    return code
+
+
+def _feature_group_label(item):
+    """`012 Advisor onboarding flow`, from the feature fields the backlog list carries."""
+    feature_id = item.get("featureId") or ""
+    feature_project, _, feature_name = feature_id.partition("/")
+    number = item.get("featureNumber")
+    label = f"{number:03d}" if isinstance(number, int) else feature_name
+    title = item.get("featureTitle")
+    if title and title != feature_name:
+        label = f"{label} {title}"
+    own_project = item.get("projectId")
+    if own_project and feature_project and feature_project != own_project:
+        label = f"{feature_project} {label}"
+    return label
+
+
+def _count(n, noun):
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _epic_summary(epic, with_status=True):
+    """`in_progress · 2 features · 14 items · @Owner · due 2026-11-30`"""
+    parts = [epic.get("status", "?")] if with_status else []
+    parts += [_count(epic.get("featureCount") or 0, "feature"), _count(epic.get("itemCount") or 0, "item")]
+    owner = epic.get("ownerName") or epic.get("ownerEmail")
+    if owner:
+        parts.append(f"@{owner}")
+    if epic.get("dueDate"):
+        parts.append(f"due {str(epic['dueDate'])[:10]}")
+    return " · ".join(parts)
+
+
+def _print_epics_table(epics, include_all=False):
+    shown = [e for e in epics if include_all or e.get("status") != "archived"]
+    if not shown:
+        print("  (no epics)")
+        return
+    width = min(max(len(_epic_label(e)) for e in shown), 60)
+    for e in shown:
+        print(f"  {_epic_label(e).ljust(width)}  {_epic_summary(e)}")
+
+
+def _print_epic_tree(active, epics, include_all=False):
+    """The backlog grouped the way the portal's tree shows it (spec 049, M12).
+
+    Epic header, then its features (each with the items delivering it), then
+    the items placed directly under it; sub-items indented under their item.
+    Then the same for everything with no epic. An item from the old model
+    (marked as an epic) is just an item with sub-items here.
+    """
+    by_id = _epics_by_id(epics)
+    present = {i.get("id") for i in active}
+    sub_items = {}
+    tops = []
+    for it in active:
+        pid = it.get("parentId")
+        if pid and pid in present:
+            sub_items.setdefault(pid, []).append(it)
+        else:
+            tops.append(it)
+
+    groups = {}
+    for it in tops:
+        eid = it.get("effectiveEpicId")
+        # An item delivering a feature in another project may take that
+        # project's epic; here it has none.
+        groups.setdefault(eid if eid in by_id else None, []).append(it)
+
+    shown = [e for e in epics
+             if e.get("id") in groups or include_all or e.get("status") not in ("completed", "archived")]
+    for e in shown:
+        print(f"  {_epic_label(e)}  [{e.get('status', '?')}] · {_epic_summary(e, with_status=False)}")
+        _print_epic_group(groups.get(e.get("id"), []), sub_items, indent=2)
+    rest = groups.get(None, [])
+    if rest:
+        if shown:
+            print("  no epic")
+            _print_epic_group(rest, sub_items, indent=2)
+        else:
+            _print_epic_group(rest, sub_items, indent=0)
+
+
+def _print_epic_group(items, sub_items, indent):
+    by_feature = {}
+    loose = []
+    for it in items:
+        if it.get("featureId"):
+            by_feature.setdefault(it["featureId"], []).append(it)
+        else:
+            loose.append(it)
+    pad = " " * indent
+    for rows in by_feature.values():
+        n = len(rows) + sum(len(sub_items.get(r.get("id"), [])) for r in rows)
+        status = rows[0].get("featureStatus")
+        status_part = f" · {status}" if status else ""
+        print(f"  {pad}{_feature_group_label(rows[0])}  feature{status_part} · {_count(n, 'item')}")
+        for r in rows:
+            _print_tree_item(r, sub_items, indent + 2, show_feature=False)
+    for r in loose:
+        _print_tree_item(r, sub_items, indent)
+
+
+def _print_tree_item(item, sub_items, indent, show_feature=True):
+    _print_backlog_row(item, indent=indent, epic_model=True, show_feature=show_feature, show_epic=False)
+    for k in sub_items.get(item.get("id"), []):
+        same_feature = k.get("featureId") == item.get("featureId")
+        _print_backlog_row(k, indent=indent + 2, epic_model=True,
+                           show_feature=show_feature or not same_feature, show_epic=False)
 
 
 def _plugin_version():
@@ -3959,7 +4269,9 @@ def view_backlog(project_id, ref, as_json=False):
     status = item.get("status", "?")
     priority = item.get("priority", "?")
     pri_marker = {"high": "!!!", "medium": "!!", "low": "!"}.get(priority, "?")
-    is_epic = item.get("isEpic", False)
+    # The [EPIC] tag is the old model's; a service with real epics sends
+    # effectiveEpicId, and there an item marked as an epic is just an item.
+    is_epic = item.get("isEpic", False) and "effectiveEpicId" not in item
     epic_tag = "[EPIC] " if is_epic else ""
     description, _ = _strip_inline_images(item.get("description") or "")
     if not description:
@@ -4023,6 +4335,13 @@ def view_backlog(project_id, ref, as_json=False):
     feature = _feature_line(item)
     if feature:
         print(f"  feature:   {feature}")
+    # Spec 049: the epic the item belongs to, and why — an item under a
+    # feature or a parent takes theirs, and can't be moved on its own.
+    if item.get("effectiveEpicNumber"):
+        via = {"feature": " (via its feature)", "parent": " (via its parent)"}.get(item.get("epicInheritedFrom"), "")
+        print(f"  epic:      E{item['effectiveEpicNumber']} {item.get('effectiveEpicTitle') or ''}".rstrip() + via)
+    if item.get("promotedToEpicNumber"):
+        print(f"  promoted:  became epic E{item['promotedToEpicNumber']}")
     print(f"  created:   {created}")
     if updated != created:
         print(f"  updated:   {updated}")
@@ -4332,9 +4651,12 @@ def restore_backlog(project_id, ref):
     print(f"Signum: restored backlog #{resp.get('number', '?')} — {resp.get('title', '?')}")
 
 
-def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, is_epic=False, assignee=None, tags=None):
-    """Create a new backlog item. `parent` may be a uuid or a numeric #N reference.
-    `is_epic=True` marks this item as an epic (can have children, can't have a parent).
+def create_backlog_item(project_id, title, description=None, priority="medium", parent=None, epic=None, assignee=None, tags=None):
+    """Create a new backlog item. `parent` may be a uuid or a numeric #N reference
+    to any top-level item (spec 049; older services accept only an item marked
+    as an epic, and say so).
+    `epic` (spec 049) is a real epic, 'E3', to file the item directly under.
+    A sub-item takes its parent's epic, so the two don't combine.
     `assignee` is an email (spec 022) — optional, omitted means unassigned.
     `tags` (spec 027) is a list of existing tag slugs or names; coining a new
     tag is a separate, permission-gated act, so an unknown name fails here
@@ -4349,11 +4671,16 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         print("Signum: not authenticated — run /awolve-signum:login first", file=sys.stderr)
         sys.exit(1)
 
-    if is_epic and parent:
-        print("Signum: --epic and --parent are mutually exclusive (epics can't have a parent)", file=sys.stderr)
+    if epic and parent:
+        print("Signum: --epic and --parent don't combine — a sub-item takes its parent's epic.\n"
+              "        Put the parent under the epic instead (epic-set <project> #N E<n>)", file=sys.stderr)
         sys.exit(1)
 
     service_url = cfg["service_url"]
+
+    epic_row = None
+    if epic:
+        epic_row = _find_epic(_require_epics(headers, service_url, project_id), epic, project_id)
 
     parent_id = None
     if parent:
@@ -4361,16 +4688,16 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         if not parent_id:
             print(f"Signum: parent '{parent}' not found in project '{project_id}'", file=sys.stderr)
             sys.exit(1)
-        if not parent_item.get("isEpic"):
-            print(f"Signum: '#{parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
+        if parent_item.get("parentId"):
+            print(f"Signum: '#{parent_item.get('number')}' is itself a sub-item — only a top-level item can have sub-items", file=sys.stderr)
             sys.exit(1)
 
     url = f"{service_url}/api/portal/projects/{project_id}/backlog"
     payload = {"title": title, "description": description, "priority": priority}
     if parent_id:
         payload["parentId"] = parent_id
-    if is_epic:
-        payload["isEpic"] = True
+    if epic_row:
+        payload["epicId"] = epic_row["id"]
     if assignee:
         payload["assignedTo"] = assignee
     if tags:
@@ -4404,12 +4731,20 @@ def create_backlog_item(project_id, title, description=None, priority="medium", 
         _print_assignee_error(status_code, body, assignee)
         if _print_tag_error(status_code, body):
             sys.exit(1)
+        if _is_epic_refusal(body):
+            _print_epic_refusal(status_code, body)
+            sys.exit(1)
         print(f"Signum: failed to create backlog item (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
 
     item = json.loads(body)
-    kind = "epic" if is_epic else "backlog item"
-    parent_note = f" under epic '{parent}'" if parent_id else ""
+    kind = "backlog item"
+    if parent_id:
+        parent_note = f" under #{parent_item.get('number')}"
+    elif epic_row:
+        parent_note = f" under {_epic_label(epic_row)}"
+    else:
+        parent_note = ""
     assigned_note = f", assigned to {_assignee_label(item) or assignee}" if assignee else ""
     tag_note = f", tagged {' '.join('#' + n for n in _tag_names(item))}" if _tag_names(item) else ""
     print(f"Signum: created {kind} '{item.get('title')}' in '{project_id}' (priority: {item.get('priority')}){parent_note}{assigned_note}{tag_note}")
@@ -4445,8 +4780,10 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
         if not new_parent_id:
             print(f"Signum: parent '{parent_ref}' not found in project '{project_id}'", file=sys.stderr)
             sys.exit(1)
-        if not new_parent_item.get("isEpic"):
-            print(f"Signum: '#{new_parent_item.get('number')}' is not an epic — only epics can have children", file=sys.stderr)
+        # Spec 049: any top-level item may have sub-items. An older service
+        # still wants an item marked as an epic, and says so (parent_not_an_epic).
+        if new_parent_item.get("parentId"):
+            print(f"Signum: '#{new_parent_item.get('number')}' is itself a sub-item — only a top-level item can have sub-items", file=sys.stderr)
             sys.exit(1)
 
     url = f"{service_url}/api/portal/backlog/{item_id}"
@@ -4461,26 +4798,22 @@ def set_backlog_parent(project_id, item_ref, parent_ref):
         sys.exit(1)
 
     if status_code not in (200, 201):
-        try:
-            err = json.loads(body).get("error", body)
-        except (json.JSONDecodeError, AttributeError):
-            err = body
-        print(f"Signum: failed to update parent (HTTP {status_code}): {err}", file=sys.stderr)
+        _print_epic_refusal(status_code, body, what="updating the parent")
         sys.exit(1)
 
     if new_parent_id:
-        print(f"Signum: '#{item.get('number')}' is now a child of '{parent_ref}'")
+        print(f"Signum: '#{item.get('number')}' is now a sub-item of '#{new_parent_item.get('number')}'")
     else:
         print(f"Signum: '#{item.get('number')}' parent cleared (now top-level)")
 
 
 def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
-    """Update title/description/priority/status/isEpic/assignedTo on an item.
+    """Update title/description/priority/status/assignedTo and more on an item.
 
     `fields` is a dict of {api_key: value} to PATCH. Caller is responsible for
     only passing keys the server understands. parentId changes go via
-    set_backlog_parent for clearer error reporting; isEpic and assignedTo flip
-    through here (assignedTo=None unassigns — spec 022).
+    set_backlog_parent and epic changes via epic-set (spec 049) for clearer
+    error reporting; assignedTo flips through here (None unassigns — spec 022).
 
     `tag_edit` (spec 027) is {replace, add, remove, clear}. The API takes the
     resulting set rather than a delta, so add/remove are folded against the
@@ -4488,7 +4821,7 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
     done by the caller before the round-trip.
     """
     if not fields and not tag_edit:
-        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--epic/--assignee/--unassign/--feature/--clear-feature", file=sys.stderr)
+        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--assignee/--unassign/--feature/--clear-feature", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -4529,6 +4862,9 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
         if _print_tag_error(status_code, body):
             sys.exit(1)
         if "feature" in fields and _print_feature_error(status_code, body):
+            sys.exit(1)
+        if _is_epic_refusal(body):
+            _print_epic_refusal(status_code, body)
             sys.exit(1)
         try:
             err = json.loads(body).get("error", body)
@@ -4583,6 +4919,303 @@ def _check_feature_took(body, requested):
         print("Signum: this service does not support item→feature links yet — "
               "update the service, or record the link in a comment for now", file=sys.stderr)
         sys.exit(1)
+
+
+def _epic_cli_context(project_id):
+    """(headers, service_url) for an epic command, or exit with the reason."""
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-signum:login first", file=sys.stderr)
+        sys.exit(1)
+    return headers, cfg["service_url"]
+
+
+def _fetch_backlog_list(headers, service_url, project_id):
+    """Every backlog item of a project as the list endpoint returns it, or exit."""
+    url = f"{service_url}/api/portal/projects/{project_id}/backlog"
+    try:
+        status_code, body = api_request(url, headers=headers)
+    except ConnectionError as e:
+        print(f"Signum: failed to fetch backlog for '{project_id}' — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"Signum: failed to fetch backlog for '{project_id}' (HTTP {status_code})", file=sys.stderr)
+        sys.exit(1)
+    data = json.loads(body)
+    return data if isinstance(data, list) else []
+
+
+def _item_by_ref(items, ref):
+    """The item named by '#N', 'N' or a uuid, or None."""
+    s = str(ref or "").lstrip("#").strip()
+    for it in items:
+        if it.get("id") == s or (s.isdigit() and it.get("number") == int(s)):
+            return it
+    return None
+
+
+def _fetch_project_features(headers, service_url, project_id):
+    """The portal's feature list for a project — a bare array on older
+    services, `{features, viewer}` from spec 048 on. [] on any failure."""
+    try:
+        status_code, body = api_request(
+            f"{service_url}/api/portal/projects/{urllib.parse.quote(project_id, safe='')}/features",
+            headers=headers,
+        )
+        if status_code != 200:
+            return []
+        data = json.loads(body)
+    except (ConnectionError, json.JSONDecodeError, TypeError):
+        return []
+    rows = data.get("features") if isinstance(data, dict) else data
+    return [f for f in rows if isinstance(f, dict)] if isinstance(rows, list) else []
+
+
+def _find_feature(features, ref, project_id):
+    """A feature by name, `project/name`, or number ('019', '19'). None if no match."""
+    s = str(ref or "").strip()
+    for f in features:
+        if s in (f.get("id"), f.get("name")) or f.get("id") == f"{project_id}/{s}":
+            return f
+    if s.isdigit():
+        for f in features:
+            if f.get("number") == int(s):
+                return f
+    return None
+
+
+def _feature_short(feature):
+    number = feature.get("number")
+    return f"{number:03d}" if isinstance(number, int) else (feature.get("name") or feature.get("id", "?"))
+
+
+def list_epics(project_id, include_all=False, as_json=False):
+    """`epics <project>`: the project's real epics (spec 049).
+
+    Against a service from before real epics, lists the items marked as epics
+    (the old kind) instead, and says that is what they are.
+    """
+    headers, service_url = _epic_cli_context(project_id)
+    epics, err = _fetch_epics(headers, service_url, project_id)
+    if err:
+        print(f"Signum: failed to read epics for '{project_id}' ({err})", file=sys.stderr)
+        sys.exit(1)
+    if epics is None:
+        old = [i for i in _fetch_backlog_list(headers, service_url, project_id) if i.get("isEpic")
+               and (include_all or i.get("status") not in ("completed", "archived"))]
+        if as_json:
+            print(json.dumps(old, indent=2, ensure_ascii=False))
+            return
+        print(f"Signum: {NO_EPICS_YET}.", file=sys.stderr)
+        print(f"Signum: {len(old)} item(s) marked as epics (the old kind) in '{project_id}':")
+        print()
+        if not old:
+            print("  (none)")
+        for item in old:
+            _print_backlog_row(item, indent=0)
+        return
+    if as_json:
+        print(json.dumps(epics, indent=2, ensure_ascii=False))
+        return
+    shown = [e for e in epics if include_all or e.get("status") != "archived"]
+    print(f"Signum: {len(shown)} epic(s) in '{project_id}'")
+    print()
+    _print_epics_table(epics, include_all=include_all)
+
+
+def create_epic(project_id, title, description=None, status=None, due=None, owner=None):
+    """`epic-create`: a new real epic (spec 049). Needs the right to create backlog items."""
+    if status and status not in EPIC_STATUSES:
+        print(f"Signum: --status must be one of {', '.join(EPIC_STATUSES)}; got '{status}'", file=sys.stderr)
+        sys.exit(1)
+    if due and not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
+        print(f"Signum: --due must be YYYY-MM-DD; got '{due}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    payload = {"title": title}
+    if description:
+        payload["description"] = description
+    if status:
+        payload["status"] = status
+    if due:
+        payload["dueDate"] = due
+    if owner:
+        payload["ownerId"] = owner
+    url = f"{service_url}/api/portal/projects/{urllib.parse.quote(project_id, safe='')}/epics"
+    try:
+        status_code, body = api_request(url, method="POST",
+                                        headers={**headers, "Content-Type": "application/json"}, data=payload)
+    except ConnectionError as e:
+        print(f"Signum: failed to create epic — {e}", file=sys.stderr)
+        sys.exit(1)
+    if _is_route_missing(status_code, body):
+        print(f"Signum: {NO_EPICS_YET} — nothing was created", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        _print_epic_refusal(status_code, body, what="creating the epic")
+        sys.exit(1)
+    epic = json.loads(body)
+    print(f"Signum: created {_epic_label(epic)} in '{project_id}' [{epic.get('status', 'idea')}]")
+    if epic.get("number"):
+        print(f"  portal: {service_url}/portal/{project_id}/epics/E{epic['number']}")
+
+
+def set_epic(project_id, target_ref, epic_ref):
+    """`epic-set`: put an item or a feature under an epic, or none (spec 049).
+
+    `#N` names an item; anything else a feature (name, project/name or number).
+    An item's own epic can only be set when it is top-level and delivers no
+    feature; otherwise it takes its feature's or parent's epic, and the
+    service refuses — the refusal is printed with the way out.
+    """
+    headers, service_url = _epic_cli_context(project_id)
+    epics = _require_epics(headers, service_url, project_id)
+    clear = str(epic_ref).lower() in ("none", "null", "-")
+    epic = None if clear else _find_epic(epics, epic_ref, project_id)
+    epic_id = epic["id"] if epic else None
+    items = _fetch_backlog_list(headers, service_url, project_id)
+
+    is_item = str(target_ref).startswith("#") or ("-" in str(target_ref) and len(str(target_ref)) >= 32)
+    feature = None
+    if not is_item:
+        feature = _find_feature(_fetch_project_features(headers, service_url, project_id), target_ref, project_id)
+        if not feature:
+            hint = f" — write #{target_ref} for an item" if str(target_ref).isdigit() and _item_by_ref(items, target_ref) else ""
+            print(f"Signum: no feature '{target_ref}' in '{project_id}'{hint}", file=sys.stderr)
+            sys.exit(1)
+
+    if feature:
+        url = f"{service_url}/api/features/{urllib.parse.quote(feature['id'], safe='')}"
+        label = f"Feature {_feature_short(feature)}"
+    else:
+        item = _item_by_ref(items, target_ref)
+        if not item:
+            print(f"Signum: item '{target_ref}' not found in project '{project_id}'", file=sys.stderr)
+            sys.exit(1)
+        url = f"{service_url}/api/portal/backlog/{item['id']}"
+        label = f"#{item.get('number')}"
+
+    try:
+        status_code, body = api_request(url, method="PATCH",
+                                        headers={**headers, "Content-Type": "application/json"},
+                                        data={"epicId": epic_id})
+    except ConnectionError as e:
+        print(f"Signum: failed to set the epic — {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if status_code not in (200, 201):
+        code, _detail = _error_code(body)
+        if not feature and code == "epic_inherited_from_feature":
+            feat = f"feature {item['featureNumber']:03d}" if isinstance(item.get("featureNumber"), int) else "a feature"
+            current = item.get("effectiveEpicNumber")
+            under = f", which is under E{current}" if current else ""
+            print(f"Signum: refused — {label} delivers {feat}{under}, and an item under a feature takes the feature's epic.\n"
+                  f"        Move the feature instead (epic-set {project_id} <feature> {epic_ref}),\n"
+                  f"        or unlink {label} first (backlog-update {project_id} {label} --clear-feature).", file=sys.stderr)
+        elif not feature and code == "epic_inherited_from_parent":
+            parent = next((i for i in items if i.get("id") == item.get("parentId")), None)
+            p = f"#{parent.get('number')}" if parent else "its parent"
+            print(f"Signum: refused — {label} is a sub-item of {p}, and a sub-item takes its parent's epic.\n"
+                  f"        Move {p} instead (epic-set {project_id} {p} {epic_ref}),\n"
+                  f"        or detach {label} first (backlog-set-parent {project_id} {label} none).", file=sys.stderr)
+        elif status_code == 404 and feature:
+            print(f"Signum: feature '{feature['id']}' not found", file=sys.stderr)
+        else:
+            _print_epic_refusal(status_code, body, what="setting the epic")
+        sys.exit(1)
+
+    # A service that predates the field would ignore it and answer 200.
+    try:
+        row = json.loads(body)
+    except (json.JSONDecodeError, TypeError):
+        row = None
+    if isinstance(row, dict) and "epicId" not in row:
+        print(f"Signum: {NO_EPICS_YET} — nothing was changed", file=sys.stderr)
+        sys.exit(1)
+
+    where = f"under {_epic_label(epic)}" if epic else "under no epic"
+    if feature:
+        following = [i for i in items if i.get("featureId") == feature["id"]
+                     and i.get("status") not in ("completed", "archived")]
+        tail = f" {_count(len(following), 'open item')} follow{'s' if len(following) == 1 else ''} it." if following else ""
+        print(f"Signum: {label} is now {where}.{tail}")
+    else:
+        print(f"Signum: {label} is now {where}.")
+        subs = [i for i in items if i.get("parentId") == item["id"]]
+        if subs:
+            print(f"        Its {_count(len(subs), 'sub-item')} follow{'s' if len(subs) == 1 else ''} it.")
+
+
+def promote_epic(project_id, item_ref, confirmed=False):
+    """`epic-promote`: turn an item with sub-items (the old kind of epic) into
+    a real epic (spec 049). Shows the service's plan; acts only when confirmed.
+    Internal users only — the service refuses anyone else.
+    """
+    headers, service_url = _epic_cli_context(project_id)
+    items = _fetch_backlog_list(headers, service_url, project_id)
+    item = _item_by_ref(items, item_ref)
+    if not item:
+        print(f"Signum: item '{item_ref}' not found in project '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    label = f"#{item.get('number')}"
+    url = f"{service_url}/api/portal/backlog/{item['id']}/promote"
+
+    def _post(data):
+        try:
+            sc, b = api_request(url, method="POST", headers={**headers, "Content-Type": "application/json"}, data=data)
+        except ConnectionError as e:
+            print(f"Signum: failed to promote {label} — {e}", file=sys.stderr)
+            sys.exit(1)
+        if _is_route_missing(sc, b):
+            print(f"Signum: {NO_EPICS_YET} — nothing was changed", file=sys.stderr)
+            sys.exit(1)
+        if sc == 403:
+            print(f"Signum: {_error_code(b)[0]}", file=sys.stderr)
+            sys.exit(1)
+        if sc not in (200, 201):
+            _print_epic_refusal(sc, b, what=f"promoting {label}")
+            sys.exit(1)
+        return json.loads(b)
+
+    plan = (_post({"dryRun": True}) or {}).get("plan") or {}
+    epics, _err = _fetch_epics(headers, service_url, project_id)
+    by_id = _epics_by_id(epics or [])
+    feature_label = {i["featureId"]: _feature_group_label(i) for i in items if i.get("featureId")}
+
+    subs = plan.get("subItems") or []
+    direct = [s for s in subs if s.get("directEpic")]
+    via_feature = len(subs) - len(direct)
+    numbers = ", ".join(f"#{s.get('number')}" for s in subs[:10]) + (", …" if len(subs) > 10 else "")
+    new_epic = plan.get("epic") or {}
+    print(f"Signum: {label} {item.get('title', '')} has {_count(len(subs), 'sub-item')}. Promoting it would:")
+    print(f"  create   a new epic '{new_epic.get('title', item.get('title'))}' [{new_epic.get('status', '?')}]")
+    if subs:
+        how = f"{len(direct)} directly" + (f", {via_feature} with their feature" if via_feature else "")
+        print(f"  move     {_count(len(subs), 'sub-item')} under it ({how}): {numbers}")
+    for f in plan.get("features") or []:
+        name = feature_label.get(f.get("id")) or (f.get("id") or "").partition("/")[2] or f.get("id")
+        if f.get("action") == "move":
+            print(f"  move     feature {name} under it")
+        else:
+            cur = by_id.get(f.get("currentEpicId"))
+            where = f"under E{cur.get('number')}" if cur else "under its current epic"
+            print(f"  keep     feature {name} {where} (its items go with it)")
+    print(f"  archive  {label} — it keeps its number, comments and history, and points on to the epic")
+
+    if not confirmed:
+        print()
+        print(f"Nothing changed. Run again with --yes to do it: epic-promote {project_id} {label} --yes")
+        return
+
+    result = _post({})
+    print()
+    print(f"Signum: promoted {label} to {_epic_label(result)}; {label} is archived")
+    if result.get("number"):
+        print(f"  portal: {service_url}/portal/{project_id}/epics/E{result['number']}")
 
 
 def delete_backlog_item(project_id, item_ref):
@@ -7884,12 +8517,28 @@ def main():
                      tag_filters=tag_filters, untagged="--untagged" in args, include_all="--all" in args,
                      as_json="--json" in args, source_filter=source_filter)
     elif cmd == "backlog-add":
-        # Spec 013: --parent <id-or-#N> and --epic
+        # Spec 013: --parent <id-or-#N>. Spec 049: --epic E<n> files the item
+        # under a real epic. The old valueless `--epic` (create the item as
+        # an epic) is refused: it is told apart by what follows it — only an
+        # E<n> is a value, anything else (a title, another flag, nothing) is
+        # the old form.
         skip_next = False
         positional = []
+        epic_val = None
         for i, a in enumerate(args[1:], 1):
             if skip_next:
                 skip_next = False
+                continue
+            if a == "--epic":
+                nxt = args[i + 1] if i + 1 < len(args) else None
+                if _epic_number(nxt) is None:
+                    print("Signum: `backlog-add --epic` no longer creates an epic. Epics are their own thing now:\n"
+                          "         specs-cli.py epic-create <project-id> \"<title>\"      — create one\n"
+                          "         specs-cli.py backlog-add <project-id> \"<title>\" --epic E<n>  — file an item under it\n"
+                          "        (A service from before real epics: mark the item as an epic in the portal.)", file=sys.stderr)
+                    sys.exit(1)
+                epic_val = nxt
+                skip_next = True
                 continue
             if a.startswith("--"):
                 if a in ("--parent", "--assignee", "--tags") and i + 1 < len(args):
@@ -7897,7 +8546,7 @@ def main():
                 continue
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee <email>] [--tags a,b]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N> | --epic E<n>] [--assignee <email>] [--tags a,b]", file=sys.stderr)
             sys.exit(1)
         desc = positional[2] if len(positional) > 2 else None
         pri = positional[3] if len(positional) > 3 else "medium"
@@ -7908,10 +8557,50 @@ def main():
             if a == "--parent" and i + 1 < len(args): parent_val = args[i + 1]
             if a == "--assignee" and i + 1 < len(args): assignee_val = args[i + 1]
             if a == "--tags" and i + 1 < len(args): tags_val = args[i + 1]
-        is_epic_flag = "--epic" in args
         tag_list = [t for t in (v.strip() for v in (tags_val or "").split(",")) if t] or None
-        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, is_epic=is_epic_flag,
+        create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, epic=epic_val,
                             assignee=assignee_val, tags=tag_list)
+    elif cmd == "epics":
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if not positional:
+            print("Usage: specs-cli.py epics <project-id> [--all] [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_epics(positional[0], include_all="--all" in args, as_json="--json" in args)
+    elif cmd == "epic-create":
+        positional = []
+        opts = {}
+        epic_flags = {"--description": "description", "--status": "status", "--due": "due", "--owner": "owner"}
+        skip_next = False
+        for i, a in enumerate(args[1:], 1):
+            if skip_next:
+                skip_next = False
+                continue
+            if a in epic_flags:
+                if i + 1 >= len(args):
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
+                    sys.exit(1)
+                opts[epic_flags[a]] = args[i + 1]
+                skip_next = True
+                continue
+            if a.startswith("--"):
+                print(f"Signum: unknown flag '{a}' for epic-create", file=sys.stderr)
+                sys.exit(1)
+            positional.append(a)
+        if len(positional) < 2:
+            print("Usage: specs-cli.py epic-create <project-id> \"<title>\" [--description T] [--status idea|planned|in_progress|completed|archived] [--due YYYY-MM-DD] [--owner EMAIL]", file=sys.stderr)
+            sys.exit(1)
+        create_epic(positional[0], positional[1], **opts)
+    elif cmd == "epic-set":
+        if len(args) < 4:
+            print("Usage: specs-cli.py epic-set <project-id> <#item | feature-name-or-number> <E<n> | none>", file=sys.stderr)
+            sys.exit(1)
+        set_epic(args[1], args[2], args[3])
+    elif cmd == "epic-promote":
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if len(positional) < 2:
+            print("Usage: specs-cli.py epic-promote <project-id> <#item> [--yes]", file=sys.stderr)
+            sys.exit(1)
+        promote_epic(positional[0], positional[1], confirmed="--yes" in args)
     elif cmd == "backlog-set-parent":
         if len(args) < 4:
             print("Usage: specs-cli.py backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N|none>", file=sys.stderr)
@@ -7919,9 +8608,16 @@ def main():
         set_backlog_parent(args[1], args[2], args[3])
     elif cmd == "backlog-update":
         # Bug #14: edit/delete affordance on the CLI to match the portal.
-        # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status/--epic flags.
+        # Positional: <project-id> <item-id-or-#N>. Then one or more --title/--description/--priority/--status flags.
         positional = []
-        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--epic": "isEpic", "--assignee": "assignedTo",
+        # Spec 049: `--epic true|false` (the item's old epic flag) is gone.
+        if "--epic" in args:
+            print("Signum: `backlog-update --epic` was removed — items are no longer marked as epics.\n"
+                  "         specs-cli.py epic-set <project-id> '#N' E<n>     — put the item under a real epic (or 'none')\n"
+                  "         specs-cli.py epic-promote <project-id> '#N'       — turn an item with sub-items into an epic\n"
+                  "         specs-cli.py epic-create <project-id> \"<title>\"  — create a new epic", file=sys.stderr)
+            sys.exit(1)
+        flag_map = {"--title": "title", "--description": "description", "--priority": "priority", "--status": "status", "--assignee": "assignedTo",
                     "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", "--feature": "feature", **DEPLOY_FLAGS}
         fields = {}
         tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
@@ -7981,7 +8677,7 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--epic true|false] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME|PROJECT/NAME | --clear-feature]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME|PROJECT/NAME | --clear-feature]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("Signum: --assignee and --unassign are mutually exclusive", file=sys.stderr)
@@ -7992,13 +8688,6 @@ def main():
         if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
             print("Signum: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)
-        # Coerce --epic value to a real bool — backend rejects strings here.
-        if "isEpic" in fields:
-            v = str(fields["isEpic"]).lower()
-            if v not in ("true", "false"):
-                print(f"Signum: --epic must be 'true' or 'false', got '{fields['isEpic']}'", file=sys.stderr)
-                sys.exit(1)
-            fields["isEpic"] = (v == "true")
         # Guard the status enum client-side (the API also rejects it) so a bad
         # value fails fast with the valid set, instead of a round-trip 400.
         if "status" in fields and fields["status"] not in BACKLOG_STATUSES:

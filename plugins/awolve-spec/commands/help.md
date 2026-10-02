@@ -51,8 +51,12 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:backlog` | List backlog items for a project (filterable by assignee and tag) |
 | `/awolve-spec:backlog-add` | Add a new idea or feature request to the backlog |
 | `/awolve-spec:view-backlog` | Show full details of a single backlog item |
-| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, epic flag, or deployment info |
-| `/awolve-spec:backlog-set-parent` | Set or clear the parent (epic) of a backlog item |
+| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, tags, feature link, or deployment info |
+| `/awolve-spec:backlog-set-parent` | Make an item a sub-item of a top-level item, or clear its parent |
+| `/awolve-spec:epics` | List a project's epics (E1, E2, …) with status, owner, counts and due date |
+| `/awolve-spec:epic-create` | Create an epic |
+| `/awolve-spec:epic-set` | Put a feature or an item under an epic (or none) |
+| `/awolve-spec:epic-promote` | Turn an item with sub-items into an epic (shows the plan first) |
 | `/awolve-spec:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-spec:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-spec:backlog-delete` | Soft-delete a backlog item (cascades to children) |

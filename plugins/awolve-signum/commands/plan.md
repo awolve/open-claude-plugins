@@ -83,22 +83,25 @@ A backlog item can carry what a spec cannot: a status of its own, an assignee, a
 Ask with AskUserQuestion, without arguing for any answer:
 
 1. **Items?** — *one item for the whole plan* (the answer whenever the work ships in one place at one time, which is most of the time), *one per part that deploys on its own* (name the parts), or *no items*.
-2. **Where do they sit?** Ask only if items are being created, and skip it for a single item unless the user asks: *an existing epic* (list the project's epics from `backlog <project-id>`), *a new epic* named after the feature, or *top level*.
+2. **Which epic?** Ask only if items are being created, and skip it for a single item unless the user asks: *an existing epic* (list them with `epics <project-id>`), *a new epic* named after the feature, or *no epic*. An epic sits above features: the feature goes under the epic, and the items linked to the feature follow it.
 
 If the answer is no items, or there is no answer: create nothing, write nothing, and say nothing more about it — not now, not on a later run.
 
 Otherwise create each item and link it to the feature:
 
 ```bash
-# A new epic, if chosen — first, since an item's parent must already be an epic:
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<feature title>" --epic
-# Each item (add --parent <epic-number> to place it under the epic):
+# A new epic, if chosen — read its number (E<n>) from the output:
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py epic-create <project-id> "<feature title>"
+# Put the feature under the epic (new or existing); its items follow it:
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py epic-set <project-id> <feature-name> E<n>
+# Each item:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-add <project-id> "<item title>" "<one-paragraph description>" medium
 # Link it — read the item number from the previous command's output:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog-update <project-id> <item-number> --feature <feature-name>
 ```
 
-- **Never link the epic itself.** It is backlog structure and ships nothing; linking it would list a row with no stage on the feature.
+- **An item linked to the feature takes the feature's epic**, so don't also pass `--epic E<n>` to `backlog-add` for these items — the link would replace it. `--epic E<n>` is for an item that stays unlinked.
+- **If the CLI says the service has no real epics yet**, don't create an epic. Offer *top level*, or an existing item to hold the items as its sub-items (`backlog-add … --parent <item-number>`).
 - **A part released by another Signum project lives in that project**, and is linked across with `--feature <this-project>/<feature-name>` — the pipeline that deploys it can only report on items in its own project. A part in a repository with no Signum project of its own stays in this one.
 - **Order stays in plan.md.** Write each item's number beside its phase heading (`- [ ] 1. Service changes → #212`). Do not add dependencies between the items to express order: a dependency marks the later item as blocked until the earlier one is *finished*, which is not what "ships second" means. Add one by hand only where a part genuinely cannot begin before another is done.
 

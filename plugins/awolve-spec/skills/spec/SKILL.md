@@ -71,11 +71,15 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-spec:delete-feature` — Delete a feature and all its documents
 - `/awolve-spec:list-features` — List features in a project with who is responsible; `--mine`/`--responsible <email>`/`--unassigned` (no project id = every configured project), `--all` includes completed
 - `/awolve-spec:set-responsible` — Set (`<email>`) or clear (`--unassign`) the person responsible for a feature
-- `/awolve-spec:backlog` — List backlog items (tree by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
-- `/awolve-spec:backlog-add` — Add a backlog item (`--parent <id-or-#N>` nests under an epic, `--epic` creates an empty epic placeholder, `--assignee <email>` gives it an owner)
-- `/awolve-spec:backlog-set-parent` — Reparent an existing backlog item (or pass `none` to clear)
+- `/awolve-spec:backlog` — List backlog items (tree grouped by epic → feature → item by default; `--epics`, `--flat`, `--status`, `--priority`, `--assignee`/`--unassigned`, `--tag`/`--untagged` flags)
+- `/awolve-spec:backlog-add` — Add a backlog item (`--epic E<n>` files it under an epic, `--parent <id-or-#N>` makes it a sub-item of a top-level item, `--assignee <email>` gives it an owner)
+- `/awolve-spec:backlog-set-parent` — Make an item a sub-item of a top-level item (or pass `none` to clear)
 - `/awolve-spec:backlog-update` — Update title/description/priority/status/assignee/tags on an existing item, or link it to the feature it delivers
-- `/awolve-spec:backlog-delete` — Soft-delete an item (cascades to children if it's an epic)
+- `/awolve-spec:backlog-delete` — Soft-delete an item (cascades to its sub-items)
+- `/awolve-spec:epics` — List a project's epics (`E<n>`, status, owner, counts, due date)
+- `/awolve-spec:epic-create` — Create an epic
+- `/awolve-spec:epic-set` — Put a feature or an item under an epic, or `none`
+- `/awolve-spec:epic-promote` — Turn an item with sub-items into an epic (plan first, `--yes` to do it)
 - `/awolve-spec:bugs` — List open bugs for a project (`--assignee`/`--unassigned` by owner, `--tag`/`--untagged` by label)
 - `/awolve-spec:view-bug` — Show full details of a single bug (description, severity, repro)
 - `/awolve-spec:bug` — Report a new bug
@@ -136,11 +140,15 @@ Full subcommand surface:
 | `resolve-comment <comment-id>` | Resolve a comment |
 | `reviews <file-path>` / `review <file-path> <verdict> [body]` | Read / submit reviews |
 | `versions <file-path>` / `save <file-path> <summary>` | Version history / snapshot |
-| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List backlog items. Default = tree view (epic head + indented children). `--epics` filters to items where `isEpic = true` (including empty epics); `--flat` ignores hierarchy. `--assignee` and `--tag` force flat view, otherwise a matching child would vanish whenever its epic didn't match too. `--tag` is repeatable and OR-ed. |
-| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N>] [--epic] [--assignee EMAIL] [--tags a,b]` | Add a backlog item. `--parent` nests it under an existing epic (parent must have `isEpic = true`); `--epic` creates the item as an epic placeholder. The two flags are mutually exclusive. `--assignee` is optional — unassigned is a normal state for an idea. |
-| `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Reparent an item (or pass `none` to detach). Errors include `parent_not_an_epic`, `parent_must_be_top_level`, `epic_has_children`, `child_cannot_be_epic`. |
-| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags] [--feature NAME \| --clear-feature]` | Update fields on an existing item. At least one flag required. For parent/epic changes use `backlog-set-parent`. Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). `--feature` links the item to the feature it delivers (one per item; `project/name` for another project); it never changes the item's status. |
-| `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If the item is an epic, the server cascades to all active children in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
+| `backlog [project-id] [--epics\|--flat] [--status STATUS] [--priority PRIORITY] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List backlog items. Default = tree view: `E<n>` epic headers, their features with the items delivering them, the epic's direct items, sub-items indented under their item, then `no epic`. `--epics` lists the epics; `--flat` ignores hierarchy. `--assignee` and `--tag` force flat view, otherwise a matching sub-item would vanish whenever its parent didn't match too. `--tag` is repeatable and OR-ed. On a service from before real epics, groups by items marked as epics instead. |
+| `backlog-add <project-id> <title> [description] [priority] [--parent <id-or-#N> \| --epic E<n>] [--assignee EMAIL] [--tags a,b]` | Add a backlog item. `--epic E<n>` files it directly under an epic; `--parent` makes it a sub-item of any top-level item (it then takes the parent's epic, so the two don't combine). The old valueless `--epic` is refused — use `epic-create`. `--assignee` is optional — unassigned is a normal state for an idea. |
+| `backlog-set-parent <project-id> <item-id-or-#N> <parent-id-or-#N\|none>` | Make an item a sub-item of a top-level item (or pass `none` to detach). Errors include `parent_must_be_top_level`, `has_sub_items`, `feature_differs_from_parent`; a service from before real epics also refuses `parent_not_an_epic`. |
+| `backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags] [--feature NAME \| --clear-feature]` | Update fields on an existing item. At least one flag required. For parent changes use `backlog-set-parent`, for epics `epic-set` (`--epic true\|false` was removed). Assignee errors: `assignee_not_found` (never signed in to the portal), `assignee_no_access` (needs project access first). `--feature` links the item to the feature it delivers (one per item; `project/name` for another project); it never changes the item's status, and the item then takes the feature's epic. |
+| `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If it has sub-items, the server cascades to all active ones in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
+| `epics <project-id> [--all] [--json]` | List the project's epics: `E<n>`, title, status, owner, feature and item counts, due date. `--all` includes archived. A service from before real epics: says so and lists items marked as epics. |
+| `epic-create <project-id> <title> [--description T] [--status S] [--due YYYY-MM-DD] [--owner EMAIL]` | Create an epic (status idea\|planned\|in_progress\|completed\|archived, default idea). Prints its `E<n>` and portal link. |
+| `epic-set <project-id> <#item \| feature> <E<n>\|none>` | Put an item (`'#N'`) or a feature (name, `project/name` or number) under an epic. An item under a feature or a parent takes theirs; the service refuses (`epic_inherited_from_feature`, `epic_inherited_from_parent`) and the CLI says what to move instead. |
+| `epic-promote <project-id> <#item> [--yes]` | Turn an item with sub-items into an epic. Without `--yes` prints the plan and changes nothing — show it to the user and confirm before `--yes`. Internal users only. |
 | `tags <project-id> [--json]` | List a project's tags with usage counts (backlog / bugs). Read this before coining a new one. |
 | `tag-create <project-id> <name> [--color C] [--description D] [--force]` | Create a tag. Exits 2 and lists close matches when a similar tag already exists — reuse one of those unless the user confirms otherwise; `--force` creates anyway. An exact match is a no-op, not an error. |
 | `tag-update <project-id> <tag> [--name N] [--color C] [--description D] [--force]` | Rename/recolour/re-describe. Everything already tagged keeps it. `tag_slug_taken` when the new name exists; there is no merge. |
@@ -158,9 +166,11 @@ Service base URL lives in `~/.claude-specs/config.yaml` (`service_url`). The por
 
 ### Backlog hierarchy (epics)
 
-Backlog items can be organized into one level of nesting: an **epic** (`isEpic: true`, top-level only) holds zero or more **child items** (regular items with `parentId` pointing at the epic). Epics are opt-in and explicit — created via `--epic` on `backlog-add` or via the portal modal. Empty epics are valid placeholders. Children can only be nested under explicit epics (not arbitrary top-level items).
+The hierarchy is **project → epic → feature → item → sub-item**. An **epic** (`E<n>`) is its own object, created with `epic-create`. A feature sits under at most one epic. An item sits under a feature (by linking it with `--feature`), directly under an epic (`--epic E<n>` / `epic-set`), or at the top, and any top-level item can hold one level of **sub-items** (`--parent`). An item's epic follows where it sits: under a feature it takes the feature's epic, as a sub-item its parent's. To move such an item, move the feature or the parent.
 
-When the user asks you to add **multiple related items** in one go (e.g. "add tasks for the onboarding flow"), prefer creating an epic first via `backlog-add … --epic` and then adding the rest with `--parent <epic-#N>`. This gives them a tidy tree view in the portal Backlog tab. For one-off items, leave them top-level.
+When the user asks you to add **multiple related items** in one go (e.g. "add tasks for the onboarding flow"), offer an epic for them: an existing one (`epics <project>`) or a new one (`epic-create`), then `--epic E<n>` on each item — or, for something smaller, one item with the rest as its sub-items via `--parent`. For one-off items, leave them top-level.
+
+Older Signum services have no real epics: there, an epic was an item marked as one (`isEpic`) with the other items as its children. The CLI detects such a service (its `/epics` routes answer 404) and falls back: `backlog` groups by those items, `epics` lists them, and the epic commands say the service has no real epics yet instead of changing anything. Don't create an item marked as an epic on any service.
 
 ### Tags
 

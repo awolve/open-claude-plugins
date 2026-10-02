@@ -4,7 +4,7 @@ description: List backlog items for a project (with optional view modes and filt
 
 # /awolve-spec:backlog
 
-List backlog items (ideas, feature requests, todos) for a project. Spec 013 added one level of optional epic→child nesting and view modes.
+List backlog items (ideas, feature requests, todos) for a project, grouped the way the portal's tree shows them: epic → feature → item → sub-item.
 
 ## Instructions
 
@@ -18,9 +18,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 
 ### View modes (default: tree)
 
-- **default (tree)** — items grouped by epic. Top-level items render at depth 0; their children appear indented underneath. Standalone items (no parent, no children) render at the top level too.
-- **`--epics`** — show only items explicitly marked as epics (`isEpic = true`), including empty ones. Useful for a roadmap-level overview.
-- **`--flat`** — flat list, no grouping (legacy behavior).
+- **default (tree)** — one header per epic (`E3 Title [status] · N features · M items`), with the features under it (each followed by the items that deliver it) and then the items placed directly under the epic. Sub-items are indented under their item. Everything without an epic follows under `no epic`. Epics with nothing open still show their header, unless they are completed or archived.
+- **`--epics`** — the project's epics only, as `/awolve-spec:epics` prints them. A roadmap-level overview.
+- **`--flat`** — flat list, no grouping. Each row names its epic (`· E3`).
+
+**A Signum service from before real epics** has no epic API. The CLI notices (the service answers 404) and falls back to the old grouping: items marked as epics are headers tagged `[EPIC]` with their children under them, and `--epics` lists those items.
 
 ### Filters
 
@@ -37,24 +39,30 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py backlog <project-id> [--epics
 
 The default view filters out `completed` and `archived` items so you see active work only. Pass `--status completed` to see them explicitly.
 
-An assignee or tag filter switches the output to flat view automatically: in tree view a matching child would be hidden whenever its epic didn't match too, which silently under-reports what someone is carrying.
+An assignee or tag filter switches the output to flat view automatically: in tree view a matching sub-item would be hidden whenever its parent didn't match too, which silently under-reports what someone is carrying.
 
 Omitting the project id runs the filter across every configured project — that's the way to answer "what is on my plate everywhere".
 
 ### Output format
 
-Each row shows priority marker (`!!!` high, `!!` medium, `!` low), the item number (`#42`), the title, any tags as `#name`, the status, and the assignee as `· @Name` when the item has one. Epic rows are prefixed with `[EPIC]` and include a child status histogram inline; empty epics (no children yet) show `· (no items yet)`:
+Each row shows priority marker (`!!!` high, `!!` medium, `!` low), the item number (`#42`), the title, any tags as `#name`, the status, and the assignee as `· @Name` when the item has one. An item with sub-items shows how many, with their statuses:
 
 ```
-  [!!] #5 [EPIC] User onboarding · children: 2 idea · 1 in_progress · 3 completed
-       in_progress
-    [!!] #6 Email verification flow  #auth #needs-ux
-         in_progress  · @Michael Dovland
-    [!] #7 Welcome screen copy
-         completed
-  [!!] #8 [EPIC] Payments · (no items yet)
-       idea
+  E1 User onboarding  [in_progress] · 1 feature · 4 items
+    012 Signup flow  feature · specifying · 2 items
+      [!!] #6 Email verification flow  #auth (1 sub-item: 1 idea)
+           in_progress  · @Alex
+        [!] #9 Resend the verification mail
+             idea
+    [!!!] #7 Agree data-retention period
+         blocked
+  E2 Payments  [idea] · 0 features · 0 items
+  no epic
+    [!!] #5 Future scope (23 sub-items: 23 idea)
+         idea
 ```
+
+On a service from before real epics, rows of items marked as epics are prefixed with `[EPIC]` and carry `· children: …` instead.
 
 Highlight high-priority items. Mention that the same backlog can be viewed and managed in the portal at `specs.awolve.ai/portal/<project>` under the Backlog tab, with richer filtering, view-mode switching, and inline editing.
 

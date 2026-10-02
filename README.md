@@ -91,7 +91,11 @@ Run `/awolve-signum:help` for the full list, or see below:
 | Command | Description |
 |---------|-------------|
 | `/awolve-signum:backlog` | List backlog items |
-| `/awolve-signum:backlog-add` | Add a new idea or feature request |
+| `/awolve-signum:backlog-add` | Add a new idea or feature request (`--epic E<n>` files it under an epic) |
+| `/awolve-signum:epics` | List a project's epics |
+| `/awolve-signum:epic-create` | Create an epic |
+| `/awolve-signum:epic-set` | Put a feature or an item under an epic |
+| `/awolve-signum:epic-promote` | Turn an item with sub-items into an epic |
 | `/awolve-signum:bugs` | List open bugs |
 | `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |

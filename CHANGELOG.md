@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.57.0 — 2026-10-02 — Björn Allvin
+
+Epics are now their own level, above features: project → epic → feature → item → sub-item, with epics numbered `E1`, `E2`, … per project. Every command below also works against a Signum service from before real epics: the CLI notices that the service has no epic API and either falls back to the old behaviour (an item marked as an epic, with children) or says the service has no real epics yet and changes nothing.
+
+- **`backlog <project>` groups by epic.** One `E3 Title [status]` header per epic, with its features (each followed by the items delivering it), then the items placed directly under it, sub-items indented under their item, then everything under `no epic`. An item from the old model (marked as an epic) is shown as a plain item with `(N sub-items: …)`; the `[EPIC]` tag is gone. `--epics` lists the epics; `--flat` rows name their epic (`· E3`). On an older service the old grouping is unchanged.
+- **New `epics <project> [--all] [--json]`** lists number, title, status, owner, feature and item counts, and due date. On an older service it says so and lists the items marked as epics.
+- **New `epic-create <project> "<title>" [--description] [--status] [--due] [--owner]`** creates an epic and prints its number and portal link.
+- **New `epic-set <project> <'#item' | feature> <E<n> | none>`** puts an item or a feature under an epic. A feature is named by folder name, `project/name` or number; its items follow it. The service's refusals are printed with the way out: an item that delivers a feature takes the feature's epic ("move the feature instead, or unlink the item first"), and a sub-item takes its parent's.
+- **New `epic-promote <project> '#item' [--yes]`** turns an item with sub-items into an epic. Without `--yes` it prints the service's plan (the new epic, which sub-items and features move, which features stay under the epic they have, and that the item is archived) and changes nothing.
+- **`backlog-add --epic E<n>`** files a new item directly under an epic. `--parent` now accepts any top-level item; an older service still wants an item marked as an epic and says so (`parent_not_an_epic`). The old valueless `--epic`, which created the item itself as an epic, is refused with a pointer to `epic-create`.
+- **`backlog-update --epic true|false` is removed**; the CLI refuses it and points to `epic-set`, `epic-promote` and `epic-create`.
+- **`view-backlog` shows the item's epic** (`epic: E3 Title`, with `(via its feature)` or `(via its parent)` when it takes the epic from there), and the epic an item was promoted to.
+- Refusals from the service's hierarchy rules (`epic_inherited_from_feature`, `epic_inherited_from_parent`, `epic_not_found`, `epic_wrong_project`, `has_sub_items`, `parent_must_be_top_level`, and others) are said in plain words with the code, in `backlog-add`, `backlog-set-parent`, `backlog-update` and the epic commands.
+- `/awolve-signum:plan` step 5 no longer creates an item marked as an epic. It offers an existing or a new epic (`epic-create`) and puts the feature under it with `epic-set`, so the linked items follow; on an older service it offers top level or an existing item as parent.
+- `attach` reads the portal's feature list in both shapes (a bare list, or `{features, viewer}`), so it no longer crashes with `'str' object has no attribute 'get'`.
+
 ## 0.56.0 — 2026-09-29 — Björn Allvin
 
 A feature can now have one person responsible for it. Needs a Signum service that supports it; against one that doesn't, each command says so rather than reporting a change that didn't happen.
