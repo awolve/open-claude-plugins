@@ -154,10 +154,31 @@ class EpicSetTest(unittest.TestCase):
         routes = {("GET", "/projects/proj/epics"): (200, json.dumps(EPICS)),
                   ("GET", "/projects/proj/backlog"): (200, json.dumps(ITEMS)),
                   ("GET", "/projects/proj/features"): (200, json.dumps(features)),
-                  ("PATCH", "/api/features/proj%2F012-onboarding"): (200, json.dumps({"id": "proj/012-onboarding", "epicId": "e2"}))}
-        with _env(routes) as (out, _err, _calls):
+                  ("PATCH", "/api/features/lookup?id=proj%2F012-onboarding"): (200, json.dumps({"id": "proj/012-onboarding", "epicId": "e2"}))}
+        with _env(routes) as (out, _err, calls):
             specs_cli.set_epic("proj", "012", "E2")
+        self.assertEqual(calls[-1], ("PATCH", f"{SERVICE_URL}/api/features/lookup?id=proj%2F012-onboarding", {"epicId": "e2"}))
         self.assertIn("Feature 012 is now under E2 Workspace. 2 open items follow it.", out.getvalue())
+
+    def _feature_routes(self, patch_answer):
+        features = {"features": [{"id": "proj/012-onboarding", "name": "012-onboarding", "number": 12}], "viewer": {}}
+        return {("GET", "/projects/proj/epics"): (200, json.dumps(EPICS)),
+                ("GET", "/projects/proj/backlog"): (200, json.dumps(ITEMS)),
+                ("GET", "/projects/proj/features"): (200, json.dumps(features)),
+                ("PATCH", "/api/features/lookup?id=proj%2F012-onboarding"): patch_answer}
+
+    def test_feature_gone_says_not_found(self):
+        with _env(self._feature_routes((404, json.dumps({"error": "not_found"})))) as (_out, err, _calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.set_epic("proj", "012", "E2")
+        self.assertIn("feature 'proj/012-onboarding' not found", err.getvalue())
+
+    def test_html_404_names_the_route_not_the_feature(self):
+        with _env(self._feature_routes(HTML_404)) as (_out, err, _calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.set_epic("proj", "012", "E2")
+        self.assertIn("HTTP 404 from", err.getvalue())
+        self.assertNotIn("not found", err.getvalue())
 
     def test_old_service(self):
         routes = {("GET", "/projects/proj/epics"): HTML_404}

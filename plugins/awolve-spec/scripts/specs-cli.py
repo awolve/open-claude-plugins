@@ -5089,7 +5089,9 @@ def set_epic(project_id, target_ref, epic_ref):
             sys.exit(1)
 
     if feature:
-        url = f"{service_url}/api/features/{urllib.parse.quote(feature['id'], safe='')}"
+        # A feature id is `<project>/<name>`, so it goes in the query string,
+        # as every other feature command sends it; `/api/features/<id>` is no route.
+        url = f"{service_url}/api/features/lookup?id={urllib.parse.quote(feature['id'], safe='')}"
         label = f"Feature {_feature_short(feature)}"
     else:
         item = _item_by_ref(items, target_ref)
@@ -5123,7 +5125,14 @@ def set_epic(project_id, target_ref, epic_ref):
                   f"        Move {p} instead (epic-set {project_id} {p} {epic_ref}),\n"
                   f"        or detach {label} first (backlog-set-parent {project_id} {label} none).", file=sys.stderr)
         elif status_code == 404 and feature:
-            print(f"Signum: feature '{feature['id']}' not found", file=sys.stderr)
+            # A JSON 404 is the service saying the feature is gone; anything
+            # else (an HTML page) means the request reached no route at all.
+            try:
+                json.loads(body)
+                print(f"Signum: feature '{feature['id']}' not found", file=sys.stderr)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                print(f"Signum: setting the epic failed — HTTP 404 from {url}, which is not a Signum API route",
+                      file=sys.stderr)
         else:
             _print_epic_refusal(status_code, body, what="setting the epic")
         sys.exit(1)
