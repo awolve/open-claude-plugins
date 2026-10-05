@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.57.1 — 2026-10-05 — Elisabeth Jensen
+
+- **`epic-set` works for features.** Putting a feature under an epic (`epic-set <project> <feature> E<n>`, or `none`) always failed with `feature '<project>/<name>' not found`, though the feature existed: the command sent its change to a route the service does not have. It now uses the same route as every other feature command. Items (`'#N'`) were never affected.
+- **A 404 from the wrong route no longer reads as a missing feature.** If the service answers with a page rather than JSON, `epic-set` prints the URL it called, so a broken route can't pass for a missing feature again.
+
 ## 0.57.0 — 2026-10-02 — Björn Allvin
 
 Epics are now their own level, above features: project → epic → feature → item → sub-item, with epics numbered `E1`, `E2`, … per project. Every command below also works against a Signum service from before real epics: the CLI notices that the service has no epic API and either falls back to the old behaviour (an item marked as an epic, with children) or says the service has no real epics yet and changes nothing.
