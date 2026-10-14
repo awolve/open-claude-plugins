@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.58.0 — 2026-10-15 — Björn Allvin
+
+- **`update-bug --epic E<n>` puts a bug under an epic; `--epic none` takes it out.** Bugs carry an epic and the portal shows them under epics, but the CLI could not set it. The CLI resolves `E<n>` against the project's epics, stops before changing anything when the epic does not exist, and checks that the bug came back with the new epic. A service from before real epics is caught and nothing is changed.
+- **`epic-set` stays for items and features.** `#N` there already means a backlog item, and bugs are numbered separately; `epic-set` and its docs now point bugs to `update-bug --epic`.
+
 ## 0.57.1 — 2026-10-05 — Elisabeth Jensen
 
 - **`epic-set` works for features.** Putting a feature under an epic (`epic-set <project> <feature> E<n>`, or `none`) always failed with `feature '<project>/<name>' not found`, though the feature existed: the command sent its change to a route the service does not have. It now uses the same route as every other feature command. Items (`'#N'`) were never affected.
