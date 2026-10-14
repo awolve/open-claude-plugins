@@ -123,7 +123,8 @@ Usage:
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
-                                       — Edit a bug's title, description, severity, assignee, tags, or deployment info
+                                       [--epic E<n> | none]
+                                       — Edit a bug's title, description, severity, assignee, tags, deployment info, or epic
     specs-cli.py bug-comments <project-id> <bug-number> [--json]
                                        — List comments on a bug
     specs-cli.py bug-comment <project-id> <bug-number> <body>
@@ -3407,7 +3408,7 @@ def _resolve_bug(project_id, bug_number):
     return cfg, headers, service_url, match
 
 
-def update_bug(project_id, bug_number, fields, tag_edit=None):
+def update_bug(project_id, bug_number, fields, tag_edit=None, epic_ref=None):
     """Update title/description/severity/assignedTo on an existing bug.
 
     `fields` is a dict of {api_key: value} to PATCH. Status changes go via
@@ -3416,9 +3417,13 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
 
     `tag_edit` (spec 027) is {replace, add, remove, clear} — see
     update_backlog_item for why it is folded after the bug is resolved.
+
+    `epic_ref` (spec 049) is 'E3' to put the bug under that epic, or 'none'
+    to take it out. It lives here and not in epic-set because a bare #N there
+    already means an item, and bugs number separately.
     """
-    if not fields and not tag_edit:
-        print("Signum: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign", file=sys.stderr)
+    if not fields and not tag_edit and epic_ref is None:
+        print("Signum: nothing to update — pass at least one of --title/--description/--severity/--assignee/--unassign/--epic", file=sys.stderr)
         sys.exit(1)
 
     if "severity" in fields and fields["severity"] not in BUG_SEVERITIES:
@@ -3433,6 +3438,13 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
         next_tags = _resolve_tag_edit(bug.get("tags"), **tag_edit)
         if next_tags is not None:
             fields = {**fields, "tags": next_tags}
+
+    epic = None
+    if epic_ref is not None:
+        epics = _require_epics(headers, service_url, project_id)
+        clear = str(epic_ref).lower() in ("none", "null", "-")
+        epic = None if clear else _find_epic(epics, epic_ref, project_id)
+        fields = {**fields, "epicId": epic["id"] if epic else None}
 
     url = f"{service_url}/api/portal/bugs/{bug_id}"
     try:
@@ -3449,6 +3461,9 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
         _print_assignee_error(status_code, body, fields.get("assignedTo"))
         if _print_tag_error(status_code, body):
             sys.exit(1)
+        if "epicId" in fields and _error_code(body)[0] in EPIC_ERROR_HINTS:
+            _print_epic_refusal(status_code, body, what=f"updating bug #{number}")
+            sys.exit(1)
         try:
             err = json.loads(body).get("error", body)
         except (json.JSONDecodeError, AttributeError):
@@ -3456,7 +3471,25 @@ def update_bug(project_id, bug_number, fields, tag_edit=None):
         print(f"Signum: failed to update bug #{number} (HTTP {status_code}): {err}", file=sys.stderr)
         sys.exit(1)
 
-    changed = ", ".join(f"{k}={v!r}" for k, v in fields.items())
+    if "epicId" in fields:
+        # Read the epic back: a service that predates the field would ignore
+        # it and still answer 200.
+        try:
+            row = json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            row = None
+        if not isinstance(row, dict) or "epicId" not in row:
+            print(f"Signum: {NO_EPICS_YET} — the epic was not set", file=sys.stderr)
+            sys.exit(1)
+        if row["epicId"] != fields["epicId"]:
+            print(f"Signum: bug #{number} came back with epicId {row['epicId']!r}, not {fields['epicId']!r}",
+                  file=sys.stderr)
+            sys.exit(1)
+
+    shown = {k: v for k, v in fields.items() if k != "epicId"}
+    if "epicId" in fields:
+        shown["epic"] = _epic_label(epic) if epic else None
+    changed = ", ".join(f"{k}={v!r}" for k, v in shown.items())
     print(f"Signum: updated bug #{number} ({changed})")
 
 
@@ -8255,10 +8288,20 @@ def main():
                     "--start": "startDate", "--due": "dueDate", "--estimate": "estimateHours", **DEPLOY_FLAGS}
         fields = {}
         tag_edit = {"replace": None, "add": [], "remove": [], "clear": False}
+        epic_ref = None
         skip_next = False
         for i, a in enumerate(args[1:], 1):
             if skip_next:
                 skip_next = False
+                continue
+            # Spec 049: --epic E<n> | none — resolved against the project's
+            # epics once the bug is found.
+            if a == "--epic":
+                if i + 1 >= len(args):
+                    print("Signum: --epic requires a value (E<n> or none)", file=sys.stderr)
+                    sys.exit(1)
+                epic_ref = args[i + 1]
+                skip_next = True
                 continue
             # Valueless twin of --assignee — an explicit null is the only way to
             # say "clear" (spec 022).
@@ -8306,7 +8349,7 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]", file=sys.stderr)
+            print("Usage: specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--epic E<n> | none]", file=sys.stderr)
             print(f"  Severities: {', '.join(BUG_SEVERITIES)}", file=sys.stderr)
             print(f"  Deployment stages: {', '.join(DEPLOY_STAGES)}", file=sys.stderr)
             sys.exit(1)
@@ -8322,7 +8365,8 @@ def main():
         validate_timing_fields(fields)
         validate_deployment_fields(fields)
         has_tag_edit = tag_edit["clear"] or tag_edit["replace"] is not None or tag_edit["add"] or tag_edit["remove"]
-        update_bug(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None)
+        update_bug(positional[0], positional[1], fields, tag_edit=tag_edit if has_tag_edit else None,
+                   epic_ref=epic_ref)
     elif cmd == "bug-comments":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]

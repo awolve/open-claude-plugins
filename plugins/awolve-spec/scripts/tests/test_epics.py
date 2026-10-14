@@ -226,6 +226,69 @@ class CliFlagTest(unittest.TestCase):
         update.assert_not_called()
 
 
+BUGS = [{"id": "b7", "number": 7, "title": "Crash on save", "projectId": "proj", "epicId": None, "tags": []}]
+
+
+class BugEpicTest(unittest.TestCase):
+    def _routes(self, patch_answer):
+        return {("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
+                ("GET", "/projects/proj/epics"): (200, json.dumps(EPICS)),
+                ("PATCH", "/bugs/b7"): patch_answer}
+
+    def test_puts_bug_under_epic(self):
+        routes = self._routes((200, json.dumps({**BUGS[0], "epicId": "e2"})))
+        with _env(routes) as (out, _err, calls):
+            specs_cli.update_bug("proj", "7", {}, epic_ref="E2")
+        self.assertIn(("PATCH", f"{SERVICE_URL}/api/portal/bugs/b7", {"epicId": "e2"}), calls)
+        self.assertIn("epic='E2 Workspace'", out.getvalue())
+
+    def test_none_takes_bug_out(self):
+        routes = self._routes((200, json.dumps({**BUGS[0], "epicId": None})))
+        with _env(routes) as (out, _err, calls):
+            specs_cli.update_bug("proj", "#7", {}, epic_ref="none")
+        self.assertIn(("PATCH", f"{SERVICE_URL}/api/portal/bugs/b7", {"epicId": None}), calls)
+        self.assertIn("epic=None", out.getvalue())
+
+    def test_unknown_epic_changes_nothing(self):
+        routes = self._routes((500, "should not be called"))
+        with _env(routes) as (_out, err, calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.update_bug("proj", "7", {}, epic_ref="E9")
+        self.assertIn("E9 not found", err.getvalue())
+        self.assertFalse([c for c in calls if c[0] == "PATCH"])
+
+    def test_service_refusal_is_explained(self):
+        routes = self._routes((400, json.dumps({"error": "epic_wrong_project"})))
+        with _env(routes) as (_out, err, _calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.update_bug("proj", "7", {}, epic_ref="E1")
+        self.assertIn("belongs to another project", err.getvalue())
+
+    def test_service_that_ignores_the_field_is_caught(self):
+        row = {k: v for k, v in BUGS[0].items() if k != "epicId"}
+        routes = self._routes((200, json.dumps(row)))
+        with _env(routes) as (_out, err, _calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.update_bug("proj", "7", {}, epic_ref="E1")
+        self.assertIn("no real epics yet", err.getvalue())
+
+    def test_service_without_epics(self):
+        routes = {("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
+                  ("GET", "/projects/proj/epics"): HTML_404}
+        with _env(routes) as (_out, err, calls):
+            with self.assertRaises(SystemExit):
+                specs_cli.update_bug("proj", "7", {}, epic_ref="E1")
+        self.assertIn("no real epics yet", err.getvalue())
+        self.assertFalse([c for c in calls if c[0] == "PATCH"])
+
+    def test_cli_flag_reaches_update_bug(self):
+        with mock.patch.object(specs_cli.sys, "argv", ["specs-cli.py", "update-bug", "proj", "7", "--epic", "E3"]), \
+             mock.patch.object(specs_cli, "update_bug") as update:
+            specs_cli.main()
+        self.assertEqual(update.call_args.args[:3], ("proj", "7", {}))
+        self.assertEqual(update.call_args.kwargs["epic_ref"], "E3")
+
+
 class PromoteTest(unittest.TestCase):
     def test_dry_run_changes_nothing(self):
         plan = {"dryRun": True, "plan": {"epic": {"title": "Future scope", "status": "idea"},

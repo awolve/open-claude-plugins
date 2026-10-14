@@ -1,5 +1,5 @@
 ---
-description: Update a bug's title, description, severity, assignee, tags, timing (start/due/estimate), or deployment info (stage + URL)
+description: Update a bug's title, description, severity, assignee, tags, timing (start/due/estimate), deployment info (stage + URL), or epic
 ---
 
 # /awolve-spec:update-bug
@@ -23,10 +23,12 @@ At least one field flag is required: `--title`, `--description`, `--severity` (l
 
 **Deployment info (spec 033):** `--deployed-stage preview|staging|production` and `--deployed-url <url>` record where the fix currently runs — they must be set together (a stage flip that kept the old URL would point at a torn-down preview host), and the CLI stamps the deploy time automatically. `--clear-deployment` removes the fact entirely. The stage is deliberately not a status: it says where the code runs, not who acts next. Setting it needs write rights on the project; external reporters cannot.
 
+**Epic:** `--epic E<n>` puts the bug under that epic; `--epic none` takes it out. The CLI resolves `E<n>` against the project's epics (list them with `/awolve-spec:epics`) and stops before changing anything when the epic does not exist. It then checks that the bug came back with the new epic. Moving a bug between epics needs write rights on the project. Bugs use this flag rather than `epic-set`, because `#N` in `epic-set` already means a backlog item and bugs are numbered separately.
+
 Run:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment]
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL | --unassign] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--epic E<n> | none]
 ```
 
 Examples:
@@ -51,6 +53,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --
 
 # Record that the fix is live on a preview slot (e.g. after pushing a fix branch)
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --deployed-stage preview --deployed-url https://preview.example.com/p1
+
+# File the bug under epic E3, or take it out of its epic
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --epic E3
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py update-bug spec-service 15 --epic none
 ```
 
 ## Notes

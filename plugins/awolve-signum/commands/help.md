@@ -70,7 +70,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
 | `/awolve-signum:bug` | Report a new bug |
 | `/awolve-signum:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
-| `/awolve-signum:update-bug` | Edit a bug's title, description, severity, assignee, tags, or deployment info |
+| `/awolve-signum:update-bug` | Edit a bug's title, description, severity, assignee, tags, deployment info, or epic |
 | `/awolve-signum:set-bug-status` | Change a bug's status |
 | `/awolve-signum:delete-bug` | Soft-delete a bug (internal users only) |
 | `/awolve-signum:bug-comments` | List comments on a bug |

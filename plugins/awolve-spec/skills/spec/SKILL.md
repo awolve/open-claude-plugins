@@ -83,7 +83,7 @@ Everything under the synced specs tree — including `specs/shared/` — is visi
 - `/awolve-spec:bugs` — List open bugs for a project (`--assignee`/`--unassigned` by owner, `--tag`/`--untagged` by label)
 - `/awolve-spec:view-bug` — Show full details of a single bug (description, severity, repro)
 - `/awolve-spec:bug` — Report a new bug
-- `/awolve-spec:update-bug` — Edit a bug's title, description, severity, assignee, or tags
+- `/awolve-spec:update-bug` — Edit a bug's title, description, severity, assignee, tags, or epic
 - `/awolve-spec:set-bug-status` — Change a bug's status (open/triaged/in_progress/ready_for_retest/resolved/closed)
 - `/awolve-spec:bug-comments` — List comments on a bug
 - `/awolve-spec:bug-comment` — Add a comment to a bug (attach commit SHA, version, rollout notes)
@@ -128,7 +128,7 @@ Full subcommand surface:
 | `bugs [project-id] [--assignee EMAIL\|--unassigned] [--tag TAG ...] [--untagged]` | List open bugs (tabular summary only). Rows show the assignee as `· @Name`. Omit the project id to sweep every configured project — that's how to answer "what's assigned to me". |
 | `view-bug <project-id> <bug-number> [--json]` | Full bug details |
 | `bug <project-id> <title> <description> [severity] [--attach file ...] [--tags a,b]` | Report a bug |
-| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags]` | Edit a bug's title, description, severity, or assignee. For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
+| `update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL\|--unassign] [--tags a,b \| --add-tag T \| --remove-tag T \| --clear-tags] [--epic E<n>\|none]` | Edit a bug's title, description, severity, or assignee. `--epic E<n>` puts the bug under an epic, `--epic none` takes it out (bugs use this, not `epic-set`, since `#N` there means an item). For status changes use `set-bug-status`; to attach resolution notes prefer `bug-comment` so the original report stays intact. Assigning needs `bug:write:any` — a reporter can edit their own bug's wording but not hand it to someone. |
 | `set-bug-status <project-id> <bug-number> <status>` | Change bug status (open/triaged/in_progress/ready_for_retest/resolved/closed) |
 | `bug-comments <project-id> <bug-number> [--json]` | List the comment thread on a bug (oldest-first). Comment UUIDs shown in brackets so they can be passed to edit/delete commands. |
 | `bug-comment <project-id> <bug-number> <body>` | Add a comment to a bug |
@@ -147,7 +147,7 @@ Full subcommand surface:
 | `backlog-delete <project-id> <item-id-or-#N>` | Soft-delete an item. If it has sub-items, the server cascades to all active ones in one transaction. Confirm with the user before calling — destructive and visible in the portal. |
 | `epics <project-id> [--all] [--json]` | List the project's epics: `E<n>`, title, status, owner, feature and item counts, due date. `--all` includes archived. A service from before real epics: says so and lists items marked as epics. |
 | `epic-create <project-id> <title> [--description T] [--status S] [--due YYYY-MM-DD] [--owner EMAIL]` | Create an epic (status idea\|planned\|in_progress\|completed\|archived, default idea). Prints its `E<n>` and portal link. |
-| `epic-set <project-id> <#item \| feature> <E<n>\|none>` | Put an item (`'#N'`) or a feature (name, `project/name` or number) under an epic. An item under a feature or a parent takes theirs; the service refuses (`epic_inherited_from_feature`, `epic_inherited_from_parent`) and the CLI says what to move instead. |
+| `epic-set <project-id> <#item \| feature> <E<n>\|none>` | Put an item (`'#N'`) or a feature (name, `project/name` or number) under an epic. An item under a feature or a parent takes theirs; the service refuses (`epic_inherited_from_feature`, `epic_inherited_from_parent`) and the CLI says what to move instead. For a bug use `update-bug … --epic E<n>`. |
 | `epic-promote <project-id> <#item> [--yes]` | Turn an item with sub-items into an epic. Without `--yes` prints the plan and changes nothing — show it to the user and confirm before `--yes`. Internal users only. |
 | `tags <project-id> [--json]` | List a project's tags with usage counts (backlog / bugs). Read this before coining a new one. |
 | `tag-create <project-id> <name> [--color C] [--description D] [--force]` | Create a tag. Exits 2 and lists close matches when a similar tag already exists — reuse one of those unless the user confirms otherwise; `--force` creates anyway. An exact match is a no-op, not an error. |

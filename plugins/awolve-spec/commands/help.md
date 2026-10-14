@@ -70,7 +70,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
-| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, tags, or deployment info |
+| `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, tags, deployment info, or epic |
 | `/awolve-spec:set-bug-status` | Change a bug's status |
 | `/awolve-spec:delete-bug` | Soft-delete a bug (internal users only) |
 | `/awolve-spec:bug-comments` | List comments on a bug |

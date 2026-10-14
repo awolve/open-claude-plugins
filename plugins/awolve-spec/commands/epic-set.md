@@ -17,6 +17,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py epic-set <project-id> <target
 - **an item**, written `#N` (quote it in a shell: `'#142'`), or
 - **a feature**: its folder name (`012-onboarding`), `project/name`, or its number (`012` or `12`).
 
+**For a bug, use `update-bug <project-id> <bug-number> --epic E<n>`** (or `--epic none`). Bugs are numbered separately from items, so `#N` here always means an item.
+
 Examples:
 
 ```bash
