@@ -2,7 +2,7 @@
 
 ## 0.58.1 — 2026-10-16 — Sofia Kindström
 
-- **Spec diagrams are Mermaid.** The spec skill and `/awolve-signum:design` now say to draw architecture, flows and sequences as a fenced `mermaid` block, which Signum renders as a diagram, and never as ASCII art in a plain code block. An ASCII diagram in a spec being edited is converted in the same edit.
+- **Spec diagrams are Mermaid.** The spec skill and `/awolve-signum:design` now say to draw architecture, flows and sequences as a fenced `mermaid` block, which Signum renders as a diagram, and never as ASCII art in a plain code block. An ASCII diagram in a spec being edited is converted in the same edit. Both name the Mermaid syntax that breaks rendering: `;` and `#` in sequence messages, unquoted flowchart labels, and `end` as a node id.
 
 ## 0.58.0 — 2026-10-15 — Björn Allvin
 
