@@ -21,6 +21,10 @@ If you're going to spec it, spec it properly. There is one spec format with thre
 
 These are the only spec document names. Other files in the folder are supporting material (diagrams, schemas) — only valid if referenced by one of the three.
 
+### Diagrams
+
+In any spec document, draw architecture, flows and sequences as Mermaid in a fenced `mermaid` block, never as box-drawing or ASCII art in a plain code block. Signum renders Mermaid as a diagram, with a fullscreen view; ASCII art shows as code and breaks on narrow screens. When you edit a spec that has an ASCII diagram, convert it to Mermaid in the same edit.
+
 ### Commands — spec creation
 
 | Command | What it does |

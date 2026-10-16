@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.58.1 — 2026-10-16 — Sofia Kindström
+
+- **Spec diagrams are Mermaid.** The spec skill and `/awolve-signum:design` now say to draw architecture, flows and sequences as a fenced `mermaid` block, which Signum renders as a diagram, and never as ASCII art in a plain code block. An ASCII diagram in a spec being edited is converted in the same edit.
+
 ## 0.58.0 — 2026-10-15 — Björn Allvin
 
 - **`update-bug --epic E<n>` puts a bug under an epic; `--epic none` takes it out.** Bugs carry an epic and the portal shows them under epics, but the CLI could not set it. The CLI resolves `E<n>` against the project's epics, stops before changing anything when the epic does not exist, and checks that the bug came back with the new epic. A service from before real epics is caught and nothing is changed.

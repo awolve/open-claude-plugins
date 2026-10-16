@@ -44,7 +44,7 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/design.md`:
 
 ## Architecture
 
-[How this fits into the existing system]
+[How this fits into the existing system — with a Mermaid diagram of the main parts and flows, see "Diagrams" below]
 
 ## Components
 
@@ -79,6 +79,8 @@ Create `${SPEC_DIR}/{NNN}-{feature-name}/design.md`:
 ```
 
 Adapt the template to the feature — not every section applies to every feature. Skip sections that don't add value. Add sections that are needed but not in the template.
+
+**Diagrams:** draw architecture, flows and sequences as Mermaid in a fenced `mermaid` block (`flowchart`, `sequenceDiagram`, `erDiagram`, `stateDiagram-v2`), never as box-drawing or ASCII art in a plain code block. Signum renders Mermaid as a diagram; ASCII art shows as code and breaks on narrow screens. Keep node labels short and leave the detail to the sections below the diagram.
 
 **Open questions:** don't leave them open. Write your recommended approach as the selected decision (noting it resolves an open question) — the reviewer comments only where they disagree. A design full of unresolved questions pushes the decision work back onto the reader.
 
