@@ -25,6 +25,8 @@ These are the only spec document names. Other files in the folder are supporting
 
 In any spec document, draw architecture, flows and sequences as Mermaid in a fenced `mermaid` block, never as box-drawing or ASCII art in a plain code block. Signum renders Mermaid as a diagram, with a fullscreen view; ASCII art shows as code and breaks on narrow screens. When you edit a spec that has an ASCII diagram, convert it to Mermaid in the same edit.
 
+Mermaid syntax that breaks rendering: in a `sequenceDiagram` message, `;` ends the statement and `#` starts an entity, so write "and" or a comma instead; in a `flowchart`, put every label in double quotes (`A["Label (detail)"]`) and never use `end` as a node id.
+
 ### Commands — spec creation
 
 | Command | What it does |
