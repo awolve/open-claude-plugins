@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.58.1 — 2026-10-19 — Björn Allvin
+
+- **`my-weekly` labels features as features.** Since spec-service 0.158.0 the weekly list also holds the open features you are responsible for. The CLI printed them as `Backlog #N  []`; it now prints `Feature #N` and leaves out the rank bracket for rows without a rank. The command's doc describes the new rows and sort order.
+
 ## 0.58.0 — 2026-10-15 — Björn Allvin
 
 - **`update-bug --epic E<n>` puts a bug under an epic; `--epic none` takes it out.** Bugs carry an epic and the portal shows them under epics, but the CLI could not set it. The CLI resolves `E<n>` against the project's epics, stops before changing anything when the epic does not exist, and checks that the bug came back with the new epic. A service from before real epics is caught and nothing is changed.

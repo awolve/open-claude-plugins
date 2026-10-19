@@ -2866,8 +2866,11 @@ def _local_time(iso):
         return iso
 
 
+_KIND_LABELS = {"bug": "Bug", "feature": "Feature"}
+
+
 def _item_label(item):
-    kind = "Bug" if item.get("kind") == "bug" else "Backlog"
+    kind = _KIND_LABELS.get(item.get("kind"), "Backlog")
     return f"{kind} #{item['number']}" if item.get("number") is not None else kind
 
 
@@ -2877,7 +2880,9 @@ def _print_by_project(items, detail):
         if item.get("projectName") != project:
             project = item.get("projectName")
             print(f"\n{project}")
-        print(f"  {_item_label(item)}  [{item.get('rank')}]  {item.get('title')}")
+        # Features have no severity or priority, so no rank bracket.
+        rank = f"  [{item['rank']}]" if item.get("rank") else ""
+        print(f"  {_item_label(item)}{rank}  {item.get('title')}")
         print(f"    {detail(item)}")
         print(f"    {item.get('url')}")
 
