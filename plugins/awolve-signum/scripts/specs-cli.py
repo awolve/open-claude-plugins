@@ -2120,10 +2120,19 @@ def handle_post_tool_use():
         return
 
     tool_name = data.get("tool_name", "")
+    tool_input = data.get("tool_input", {}) or {}
+    if tool_name == "Bash":
+        # A heredoc, `sed -i`, `cp` or a script names no file in the payload.
+        # When the command mentions a configured specs path, sweep for spec
+        # files changed since the last sweep; the Stop hook is the net for
+        # commands that compute the path.
+        cfg = config.read_config()
+        if cfg and _command_mentions_specs(cfg, tool_input.get("command", "")):
+            sweep_changed_specs(cfg)
+        return
     if tool_name not in ("Write", "Edit"):
         return
 
-    tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
     if not file_path:
         return
@@ -2161,6 +2170,172 @@ def handle_post_tool_use():
             print(f"Signum: auto-push failed for {os.path.basename(file_path)} — see error above", file=sys.stderr)
     except Exception as e:
         print(f"Signum: auto-push failed for {os.path.basename(file_path)} — {e}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Sweep — spec files changed by anything other than Write/Edit
+#
+# The Write/Edit path above knows its file. A Bash command or a script does
+# not say which file it wrote, so without this a spec edited that way was
+# never pushed, and nothing said so. The sweep looks only under the
+# configured project paths, picks files whose mtime is newer than the last
+# sweep, and hands each to push(), which skips unchanged content and refuses
+# (409) when the service has moved on, so a stale copy can never overwrite a
+# newer version.
+# ---------------------------------------------------------------------------
+
+SWEEP_CAP = 25
+SWEEP_COLD_START_SECONDS = 60
+
+
+def _sweep_marker_path(cfg):
+    key = hashlib.sha256(cfg["project_root"].encode("utf-8")).hexdigest()[:16]
+    return os.path.join(conflict_store.specs_cache_dir(), "sweep", f"{key}.json")
+
+
+def _read_sweep_marker(cfg):
+    try:
+        with open(_sweep_marker_path(cfg), "r", encoding="utf-8") as f:
+            ts = json.load(f).get("ts")
+        if isinstance(ts, (int, float)) and ts > 0:
+            return ts
+    except (IOError, OSError, ValueError):
+        pass
+    # Cold start: catch the command that just ran, not every historical edit.
+    return time.time() - SWEEP_COLD_START_SECONDS
+
+
+def _write_sweep_marker(cfg, ts):
+    path = _sweep_marker_path(cfg)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"ts": ts}, f)
+    except (IOError, OSError):
+        pass  # losing the marker only means the next sweep looks a bit further back
+
+
+def _command_mentions_specs(cfg, command):
+    """True when the command text names a configured specs path."""
+    if not command:
+        return False
+    for proj in cfg["projects"]:
+        path = proj["path"]
+        rel = os.path.relpath(path, cfg["project_root"])
+        names = {path, rel, os.path.join(os.path.basename(os.path.dirname(path)), os.path.basename(path))}
+        if any(n and n != "." and n in command for n in names):
+            return True
+    return False
+
+
+def _doc_id_of(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            meta, _ = parse_frontmatter(f.read(2048))
+        return meta.get("spec_doc_id")
+    except (IOError, OSError, UnicodeDecodeError):
+        return None
+
+
+def _has_twin(path, doc_id):
+    """True when another .md in the same folder carries the same spec_doc_id.
+
+    A sync client's conflict copy (`design-<machine>.md`) keeps the original's
+    frontmatter, and push() addresses the document by spec_doc_id, so pushing
+    either file could overwrite the other's content. Neither is pushed."""
+    folder = os.path.dirname(path)
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return False
+    for name in names:
+        other = os.path.join(folder, name)
+        if other != path and name.endswith(".md") and _doc_id_of(other) == doc_id:
+            return True
+    return False
+
+
+def _changed_spec_files(cfg, since, twins=None):
+    """Spec files (with spec_doc_id) under configured paths, modified after
+    `since`, whose body differs from what was last synced. Files that share
+    their spec_doc_id with a sibling go to `twins` instead."""
+    found = []
+    for proj in cfg["projects"]:
+        for root, dirs, files in os.walk(proj["path"], followlinks=True):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in files:
+                if not name.endswith(".md") or name.startswith("."):
+                    continue
+                full = os.path.join(root, name)
+                try:
+                    if os.path.getmtime(full) <= since:
+                        continue
+                    with open(full, "r", encoding="utf-8") as f:
+                        content = f.read()
+                except (IOError, OSError, UnicodeDecodeError):
+                    continue
+                meta, body = parse_frontmatter(content)
+                if not meta.get("spec_doc_id"):
+                    continue
+                body_hash = hashlib.sha256(strip_frontmatter(body).strip().encode("utf-8")).hexdigest()
+                if meta.get("last_synced_hash") == body_hash:
+                    continue
+                if _has_twin(full, meta["spec_doc_id"]):
+                    if twins is not None:
+                        twins.append(full)
+                    continue
+                found.append(full)
+    return found
+
+
+def sweep_changed_specs(cfg):
+    """Push spec files changed since the last sweep. Never raises."""
+    started = time.time()
+    since = _read_sweep_marker(cfg)
+    twins = []
+    try:
+        candidates = _changed_spec_files(cfg, since, twins)
+    except Exception as e:
+        print(f"Signum: sweep failed — {e}", file=sys.stderr)
+        return
+    _write_sweep_marker(cfg, started)
+    for path in twins:
+        print(
+            f"Signum: not pushing {os.path.relpath(path, cfg['project_root'])} — another file in its "
+            f"folder has the same spec_doc_id (a sync conflict copy?). Keep one, delete the other.",
+            file=sys.stderr,
+        )
+    if len(candidates) > SWEEP_CAP:
+        print(
+            f"Signum: {len(candidates)} spec files changed outside Write/Edit; pushing the first "
+            f"{SWEEP_CAP}. Run /awolve-signum:pull to see the rest.",
+            file=sys.stderr,
+        )
+        candidates = candidates[:SWEEP_CAP]
+    for path in candidates:
+        name = os.path.relpath(path, cfg["project_root"])
+        try:
+            ok = push(path)
+        except SystemExit as e:
+            ok = e.code == 0
+        except Exception as e:
+            print(f"Signum: auto-push failed for {name} — {e}", file=sys.stderr)
+            continue
+        if ok:
+            print(f"Signum: pushed {name} (edited outside Write/Edit)", file=sys.stderr)
+        else:
+            print(f"Signum: could not push {name} — run /awolve-signum:pull and resolve", file=sys.stderr)
+
+
+def handle_stop():
+    """Stop hook: one sweep per turn, whatever wrote the file."""
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+    cfg = config.read_config()
+    if cfg:
+        sweep_changed_specs(cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -8992,13 +9167,15 @@ def main():
         # Entry point for hooks.json. The older plugin name runs nothing when
         # the newer one is enabled; that copy owns sync for the session.
         event = args[1] if len(args) > 1 else ""
-        if event not in ("session-start", "post-tool-use"):
-            print("Usage: specs-cli.py hook <session-start|post-tool-use>", file=sys.stderr)
+        if event not in ("session-start", "post-tool-use", "stop"):
+            print("Usage: specs-cli.py hook <session-start|post-tool-use|stop>", file=sys.stderr)
             sys.exit(1)
         project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
         if not _hooks_belong_to_successor(project_dir):
             if event == "session-start":
                 pull(project_filter=None, quiet=True, delete_mode="trash", force_full=False)
+            elif event == "stop":
+                handle_stop()
             else:
                 handle_post_tool_use()
     elif cmd == "post-tool-use":

@@ -117,4 +117,5 @@ Run `/awolve-signum:help` for the full list, or see below:
 
 - **SessionStart hook** — pulls latest specs from the service, writes them to configured paths with version metadata in YAML frontmatter
 - **PostToolUse hook** — detects edits to spec files, pushes changes as new versions with optimistic locking (409 on conflict)
+- **Sweep (Bash and Stop)** — a spec changed by a Bash command or a script is found by mtime under the configured paths and pushed the same way, at the latest when the turn ends
 - **No dependencies** — pure Python 3 stdlib, works everywhere

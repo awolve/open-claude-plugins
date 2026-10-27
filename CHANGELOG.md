@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.59.0 — 2026-10-27 — Björn Allvin
+
+- **Spec files edited outside Write/Edit are pushed too.** The push hook only ran after Claude's Write and Edit, so a spec changed with `sed -i`, a heredoc, `cp` or a script stayed local, and nothing said so; such edits could sit unpushed for months. Now a Bash command that names a configured specs path, and every end of turn (new `Stop` hook), sweeps the configured paths for spec files changed since the last sweep and pushes them. Only files under the paths in `.claude/specs.md` / `.claude/specs.local.md` are looked at. `push()` still skips unchanged content and refuses with a conflict when the service has a newer version, so a stale copy cannot overwrite newer work. The first sweep on a machine looks back one minute, not at older edits, and a sweep pushes at most 25 files.
+- **Sync conflict copies are never pushed by the sweep.** A file that shares its `spec_doc_id` with another file in the same folder (a sync client's `design-<machine>.md` copy keeps the original's frontmatter) is skipped with a message naming it, since pushing either could overwrite the other.
+
 ## 0.58.1 — 2026-10-19 — Björn Allvin
 
 - **`my-weekly` labels features as features.** Since spec-service 0.158.0 the weekly list also holds the open features you are responsible for. The CLI printed them as `Backlog #N  []`; it now prints `Feature #N` and leaves out the rank bracket for rows without a rank. The command's doc describes the new rows and sort order.
