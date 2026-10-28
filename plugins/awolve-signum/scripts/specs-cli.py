@@ -290,6 +290,25 @@ def file_content_hash(content):
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
+def signum_client():
+    """`<plugin name>/<version>` from this copy's own plugin.json.
+
+    Sent as X-Signum-Client on every call, so the service's API usage page can
+    tell which client and version still call which endpoint (at Awolve: Signum
+    spec 050). The legacy copy reports its own name.
+    """
+    return f"{_plugin_name() or SUCCESSOR_PLUGIN}/{_plugin_version()}"
+
+
+def with_client_header(headers):
+    """A copy of `headers` with X-Signum-Client and User-Agent set, unless given."""
+    headers = dict(headers or {})
+    client = signum_client()
+    headers.setdefault("X-Signum-Client", client)
+    headers.setdefault("User-Agent", client)
+    return headers
+
+
 def api_request(url, method="GET", headers=None, data=None):
     """Make an HTTP request with transient-failure retries.
 
@@ -304,8 +323,7 @@ def api_request(url, method="GET", headers=None, data=None):
     - 409 Conflict and 401 Unauthorized are never retried — they're semantic
       signals the caller needs to handle.
     """
-    headers = headers or {}
-    headers.setdefault("User-Agent", "awolve-specs-plugin/1.0.0")
+    headers = with_client_header(headers)
 
     body_bytes = None
     if data is not None:
@@ -1234,7 +1252,7 @@ def pull_project(
 
         dl_url = f"{service_url}/api/sync/attachments/{att_id}"
         try:
-            req = urllib.request.Request(dl_url, headers=headers, method="GET")
+            req = urllib.request.Request(dl_url, headers=with_client_header(headers), method="GET")
             with urllib.request.urlopen(req, timeout=60) as resp:
                 content = resp.read()
         except (urllib.error.HTTPError, urllib.error.URLError, ConnectionError) as e:
@@ -6928,7 +6946,7 @@ def attach_file(file_path, feature_identifier=None):
     content_type, body_bytes = _build_multipart("feature", feature_id, file_path)
 
     upload_url = f"{service_url}/api/portal/attachments"
-    upload_headers = dict(headers)
+    upload_headers = with_client_header(headers)
     upload_headers["Content-Type"] = content_type
     upload_headers["Content-Length"] = str(len(body_bytes))
 
@@ -7000,7 +7018,7 @@ def _upload_attachment(headers, service_url, entity_type, entity_id, file_path, 
 
     content_type, body_bytes = _build_multipart(entity_type, entity_id, file_path)
     upload_url = f"{service_url}/api/portal/attachments"
-    upload_headers = dict(headers)
+    upload_headers = with_client_header(headers)
     upload_headers["Content-Type"] = content_type
     upload_headers["Content-Length"] = str(len(body_bytes))
 
@@ -7153,7 +7171,7 @@ def _fetch_attachment(attachment_id):
     service_url = cfg["service_url"]
 
     url = f"{service_url}/api/portal/attachments/{attachment_id}"
-    req = urllib.request.Request(url, headers=headers, method="GET")
+    req = urllib.request.Request(url, headers=with_client_header(headers), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = resp.read()
@@ -7823,7 +7841,7 @@ def test_image_add(case_id, file_path, caption, target):
         f"--{boundary}--".encode(), b"",
     ])
     body = b"\r\n".join(parts)
-    h = dict(headers)
+    h = with_client_header(headers)
     h["Content-Type"] = f"multipart/form-data; boundary={boundary}"
     h["Content-Length"] = str(len(body))
     req = urllib.request.Request(f"{service_url}/api/portal/cases/{case_id}/attachments", data=body, headers=h, method="POST")
