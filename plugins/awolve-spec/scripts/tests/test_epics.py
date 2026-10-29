@@ -231,7 +231,9 @@ BUGS = [{"id": "b7", "number": 7, "title": "Crash on save", "projectId": "proj",
 
 class BugEpicTest(unittest.TestCase):
     def _routes(self, patch_answer):
-        return {("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
+        # A service from before bugs/by-number: the bug is found in the list.
+        return {("GET", "/projects/proj/bugs/by-number/7"): HTML_404,
+                ("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
                 ("GET", "/projects/proj/epics"): (200, json.dumps(EPICS)),
                 ("PATCH", "/bugs/b7"): patch_answer}
 
@@ -273,7 +275,8 @@ class BugEpicTest(unittest.TestCase):
         self.assertIn("no real epics yet", err.getvalue())
 
     def test_service_without_epics(self):
-        routes = {("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
+        routes = {("GET", "/projects/proj/bugs/by-number/7"): HTML_404,
+                  ("GET", "/projects/proj/bugs"): (200, json.dumps(BUGS)),
                   ("GET", "/projects/proj/epics"): HTML_404}
         with _env(routes) as (_out, err, calls):
             with self.assertRaises(SystemExit):

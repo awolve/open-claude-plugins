@@ -17,6 +17,10 @@ Valid statuses: `open`, `triaged`, `in_progress`, `ready_for_retest`, `resolved`
 
 `ready_for_retest` means the fix is in and the bug is waiting for the reporter/QA to verify — it sits between `in_progress` and `resolved`.
 
+The shared statuses work too: `new` (= open), `planned` (= triaged), `in_progress`, `ready_for_testing` (= ready_for_retest), `completed` (= resolved), `archived` (= closed), and `blocked`. `blocked` needs a Signum server with shared statuses; the command says so on an older one.
+
+The number is the bug's own number, the one `/awolve-spec:bugs` shows, even after the server has given it a number in the single item series.
+
 Then run:
 
 ```bash

@@ -119,7 +119,8 @@ Usage:
     specs-cli.py view-bug <project-id> <bug-number> [--json] [--images [dir]]
                                        — Show full details of a single bug (description, severity, repro, etc.)
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
-                                       — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed)
+                                       — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed,
+                                         or a shared status: new|planned|in_progress|blocked|ready_for_testing|completed|archived)
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
@@ -135,6 +136,16 @@ Usage:
                                        — Delete a bug comment (author only). Hard delete, audited.
     specs-cli.py delete-bug <project-id> <bug-number>
                                        — Soft-delete a bug (internal users only)
+    specs-cli.py items [project-id] [--kind implementation,bug,activity] [--state S] [--source widget] [--all] [--json]
+                                       — List items of every kind in the project's single number series, with
+                                         kind and shared status; open ones unless --all or --state (needs a
+                                         Signum with item types)
+    specs-cli.py item <project-id> <#N> [--bug] [--json]
+                                       — Show one item of any kind; --bug reads N as a bug number. A bug
+                                         shows its bug number beside its item number
+    specs-cli.py item-kind <project-id> <#N> <implementation|bug|activity> [--bug]
+                                       — Change an item's kind (internal users). It keeps its number; its
+                                         status moves to the nearest one the new kind has
     specs-cli.py feedback-users <project-id> [--json]
                                        — Feedback users of a project: the credential an app's backend
                                          holds so its users can file bugs and ideas (project admin)
@@ -2366,6 +2377,60 @@ DOCUMENT_STATUSES = ["specifying", "ready", "approved"]
 # service's StatusBadge.tsx). Order is the workflow order — the histograms below
 # render in this sequence.
 BACKLOG_STATUSES = ["idea", "planned", "blocked", "in_progress", "ready_for_testing", "completed", "archived"]
+
+# The shared statuses: one list for items, bugs, features and documents, each
+# kind using part of it (at Awolve: Signum spec 050). A server that has them
+# accepts them on every endpoint beside the old values, which stay accepted
+# for good. The old lists above stay the old endpoints' vocabulary.
+ITEM_KINDS = ["implementation", "bug", "activity"]
+ITEM_STATES = ["new", "planned", "in_progress", "blocked", "ready_for_testing", "completed", "archived"]
+SHARED_STATUSES = {
+    "backlog": ITEM_STATES,
+    "bug": ITEM_STATES,
+    "feature": ["new", "specifying", "planned", "in_progress", "blocked", "ready_for_testing", "completed", "archived"],
+    "document": ["in_progress", "ready_for_testing", "completed", "archived"],
+}
+# A shared status → the old value that means the same thing. The CLI sends the
+# old value, so a server without the shared statuses takes it too. A shared
+# status missing here has no old twin and needs a server that has them.
+OLD_TWIN = {
+    "backlog": {"new": "idea"},
+    "bug": {"new": "open", "planned": "triaged", "ready_for_testing": "ready_for_retest",
+            "completed": "resolved", "archived": "closed"},
+    "feature": {"new": "idea"},
+    "document": {"in_progress": "specifying", "ready_for_testing": "ready", "completed": "approved"},
+}
+NEWER_SIGNUM = ("this needs a newer Signum server, one with item types and shared statuses "
+                "(at Awolve: Signum spec 050)")
+
+
+def _hint_newer_signum(record, value, status_code):
+    """After a refused write: say so when the value was one only a newer server knows."""
+    if status_code == 400 and needs_shared_statuses(record, value):
+        print(f"  '{value}' is a shared status: {NEWER_SIGNUM}", file=sys.stderr)
+
+
+def _old_statuses(record):
+    return {"backlog": BACKLOG_STATUSES, "bug": BUG_STATUSES,
+            "feature": FEATURE_STATUSES, "document": DOCUMENT_STATUSES}[record]
+
+
+def accepted_statuses(record):
+    """The old values, then the shared ones not among them. `record` is
+    backlog, bug, feature or document."""
+    old = _old_statuses(record)
+    return list(old) + [s for s in SHARED_STATUSES[record] if s not in old]
+
+
+def status_to_send(record, value):
+    """The value to send for `value`: its old twin when it has one, else itself."""
+    return OLD_TWIN[record].get(value, value)
+
+
+def needs_shared_statuses(record, value):
+    """True when `value` means nothing to a server without the shared statuses."""
+    return status_to_send(record, value) not in _old_statuses(record)
+
 # "blocked" is settable by hand like any other status, but it is also maintained
 # by the service: adding a dependency moves an item to blocked, and finishing
 # the last blocker puts back whatever it was before. So a manual --status on an
@@ -2612,26 +2677,27 @@ def set_status(identifier, new_status):
             print(f"Signum: {identifier} has no spec_doc_id in frontmatter", file=sys.stderr)
             sys.exit(1)
 
-        if new_status not in DOCUMENT_STATUSES:
-            print(f"Signum: invalid document status '{new_status}'. Must be one of: {', '.join(DOCUMENT_STATUSES)}", file=sys.stderr)
+        if new_status not in accepted_statuses("document"):
+            print(f"Signum: invalid document status '{new_status}'. Must be one of: {', '.join(accepted_statuses('document'))}", file=sys.stderr)
             sys.exit(1)
 
         status_code, resp_body = api_request(
             f"{service_url}/api/documents/{doc_id}",
             method="PATCH",
             headers={**headers, "Content-Type": "application/json"},
-            data={"status": new_status},
+            data={"status": status_to_send("document", new_status)},
         )
         if status_code not in (200, 201):
             print(f"Signum: failed to update document status (HTTP {status_code}): {resp_body}", file=sys.stderr)
+            _hint_newer_signum("document", new_status, status_code)
             sys.exit(1)
 
         rel = os.path.basename(identifier)
         print(f"Signum: document {rel} → {new_status}")
 
     elif is_feature_id:
-        if new_status not in FEATURE_STATUSES:
-            print(f"Signum: invalid feature status '{new_status}'. Must be one of: {', '.join(FEATURE_STATUSES)}", file=sys.stderr)
+        if new_status not in accepted_statuses("feature"):
+            print(f"Signum: invalid feature status '{new_status}'. Must be one of: {', '.join(accepted_statuses('feature'))}", file=sys.stderr)
             sys.exit(1)
 
         import urllib.parse
@@ -2640,22 +2706,23 @@ def set_status(identifier, new_status):
             f"{service_url}/api/features/lookup?id={encoded_id}",
             method="PATCH",
             headers={**headers, "Content-Type": "application/json"},
-            data={"status": new_status},
+            data={"status": status_to_send("feature", new_status)},
         )
         if status_code not in (200, 201):
             print(f"Signum: failed to update feature status (HTTP {status_code}): {resp_body}", file=sys.stderr)
+            _hint_newer_signum("feature", new_status, status_code)
             sys.exit(1)
 
         print(f"Signum: feature {identifier} → {new_status}")
 
     else:
         # Try as document UUID
-        if new_status in DOCUMENT_STATUSES:
+        if new_status in accepted_statuses("document"):
             status_code, resp_body = api_request(
                 f"{service_url}/api/documents/{identifier}",
                 method="PATCH",
                 headers={**headers, "Content-Type": "application/json"},
-                data={"status": new_status},
+                data={"status": status_to_send("document", new_status)},
             )
             if status_code in (200, 201):
                 print(f"Signum: document {identifier} → {new_status}")
@@ -2663,7 +2730,7 @@ def set_status(identifier, new_status):
 
         # Try as feature ID without slash — collect all matches first to
         # detect ambiguity (bug #9: same feature name in multiple projects).
-        if new_status in FEATURE_STATUSES:
+        if new_status in accepted_statuses("feature"):
             import urllib.parse
             matches = []  # [(feature_id, project_id, entry), ...]
             for proj in cfg["projects"]:
@@ -2690,11 +2757,15 @@ def set_status(identifier, new_status):
                     f"{service_url}/api/features/lookup?id={encoded_id}",
                     method="PATCH",
                     headers={**headers, "Content-Type": "application/json"},
-                    data={"status": new_status},
+                    data={"status": status_to_send("feature", new_status)},
                 )
                 if status_code in (200, 201):
                     print(f"Signum: feature {feature_id} → {new_status}")
                     return
+                if status_code == 400 and needs_shared_statuses("feature", new_status):
+                    print(f"Signum: failed to update feature status (HTTP 400): {resp_body}", file=sys.stderr)
+                    _hint_newer_signum("feature", new_status, status_code)
+                    sys.exit(1)
 
         print(f"Signum: could not find feature or document '{identifier}'", file=sys.stderr)
         sys.exit(1)
@@ -3174,7 +3245,8 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
         if include_all:
             open_bugs = list(bugs)
         elif status_filter:
-            open_bugs = [b for b in bugs if b.get("status") == status_filter]
+            # The rows carry old values; a shared one is matched by its twin.
+            open_bugs = [b for b in bugs if b.get("status") == status_to_send("bug", status_filter)]
         else:
             open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
         scope = "" if include_all else (status_filter or "open")
@@ -3359,6 +3431,65 @@ def _bug_attachments(bug_id):
     return atts if isinstance(atts, list) else []
 
 
+def _route_missing(status_code, body):
+    """True when a 404 means the server has no such route, not no such record.
+
+    A route that exists answers a missing record with a JSON error
+    (`{"error": "Bug not found"}`); a path with no route gets the server's
+    HTML not-found page.
+    """
+    if status_code != 404:
+        return False
+    try:
+        return not isinstance(json.loads(body), dict)
+    except (TypeError, ValueError):
+        return True
+
+
+def _find_bug(headers, service_url, project_id, number):
+    """Find a bug by its bug number. Returns (http_status, bug, full).
+
+    `http_status` is 200 when found, 404 when there is no such bug, and the
+    failing status otherwise. `full` says whether `bug` is the whole record
+    or a slim list row.
+
+    Asks `bugs/by-number/<n>`, which answers with the whole record. A server
+    without that route (at Awolve: Signum before spec 050) gets the old way:
+    download the project's bug list and pick the number out. A bug that moved
+    into the single item series is still found by the number it had as a bug.
+    Raises ConnectionError.
+    """
+    status_code, body = api_request(
+        f"{service_url}/api/portal/projects/{project_id}/bugs/by-number/{number}", headers=headers
+    )
+    if status_code == 200:
+        return 200, json.loads(body), True
+    if not _route_missing(status_code, body):
+        return status_code, None, False
+
+    status_code, body = api_request(f"{service_url}/api/portal/projects/{project_id}/bugs", headers=headers)
+    if status_code != 200:
+        return status_code, None, False
+    match = next((b for b in json.loads(body) if b.get("number") == number), None)
+    return (200, match, False) if match else (404, None, False)
+
+
+def _require_bug(headers, service_url, project_id, number):
+    """_find_bug, exiting with the reason when the bug cannot be had. Returns (bug, full)."""
+    try:
+        status_code, bug, full = _find_bug(headers, service_url, project_id, number)
+    except ConnectionError as e:
+        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
+        sys.exit(1)
+    return bug, full
+
+
 def view_bug(project_id, bug_number, as_json=False, save_images=False, images_dir=None):
     """Show full details for a single bug by its short number."""
     cfg = config.read_config()
@@ -3383,31 +3514,17 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
         print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
-    url = f"{service_url}/api/portal/projects/{project_id}/bugs"
-    try:
-        status_code, body = api_request(url, headers=headers)
-    except ConnectionError as e:
-        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if status_code != 200:
-        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
-        sys.exit(1)
-
-    bugs = json.loads(body)
-    match = next((b for b in bugs if b.get("number") == number), None)
-    if not match:
-        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
-        sys.exit(1)
+    match, full = _require_bug(headers, service_url, project_id, number)
 
     # The list endpoint returns a deliberately slim shape — it omits the body
     # fields (description, steps, expected, actual, environment), which can be
     # hundreds of KB of inline base64 screenshots. Fetch the detail endpoint
     # for the full record; without this every bug rendered "(no description)"
-    # and pasted screenshots were invisible to the CLI.
+    # and pasted screenshots were invisible to the CLI. The by-number lookup
+    # already answered with the full record.
     bug_id = match.get("id")
     detail = match
-    if bug_id:
+    if bug_id and not full:
         try:
             d_status, d_body = api_request(
                 f"{service_url}/api/portal/bugs/{bug_id}", headers=headers
@@ -3451,6 +3568,9 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
     comment_count = len(comments) if isinstance(comments, list) else match.get("commentCount", 0)
 
     print(f"#{number} [{sev_marker} {severity}] {title}")
+    if detail.get("item_number") not in (None, number):
+        # Its number in the project's single item series (`item` shows it).
+        print(f"  item:      #{detail['item_number']}")
     print(f"  status:    {status}")
     print(f"  reporter:  {reporter}")
     print(f"  assignee:  {_assignee_label(detail) or '(unassigned)'}")
@@ -3501,8 +3621,8 @@ def view_bug(project_id, bug_number, as_json=False, save_images=False, images_di
 
 def set_bug_status(project_id, bug_number, status):
     """Update a bug's status by its short number."""
-    if status not in BUG_STATUSES:
-        print(f"Signum: invalid status '{status}'. Valid: {', '.join(BUG_STATUSES)}", file=sys.stderr)
+    if status not in accepted_statuses("bug"):
+        print(f"Signum: invalid status '{status}'. Valid: {', '.join(accepted_statuses('bug'))}", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -3527,31 +3647,24 @@ def set_bug_status(project_id, bug_number, status):
         print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
-    # Resolve short number to UUID by fetching the project's bug list.
-    list_url = f"{service_url}/api/portal/projects/{project_id}/bugs"
-    try:
-        status_code, body = api_request(list_url, headers=headers)
-    except ConnectionError as e:
-        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
-        sys.exit(1)
-    if status_code != 200:
-        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
-        sys.exit(1)
-
-    bugs = json.loads(body)
-    match = next((b for b in bugs if b.get("number") == number), None)
-    if not match:
-        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
-        sys.exit(1)
+    match, _ = _require_bug(headers, service_url, project_id, number)
 
     bug_id = match["id"]
-    patch_url = f"{service_url}/api/portal/bugs/{bug_id}"
+    # A shared status with no old twin (`blocked`) goes through the item
+    # endpoint: an older server's bug endpoint would store any string it got.
+    if needs_shared_statuses("bug", status):
+        patch_url, data = f"{service_url}/api/portal/items/{bug_id}", {"state": status}
+    else:
+        patch_url, data = f"{service_url}/api/portal/bugs/{bug_id}", {"status": status_to_send("bug", status)}
     try:
-        status_code, body = api_request(patch_url, method="PATCH", headers=headers, data={"status": status})
+        status_code, body = api_request(patch_url, method="PATCH", headers=headers, data=data)
     except ConnectionError as e:
         print(f"Signum: failed to update bug — {e}", file=sys.stderr)
         sys.exit(1)
 
+    if _route_missing(status_code, body):
+        print(f"Signum: cannot set bug #{number} to '{status}': {NEWER_SIGNUM}", file=sys.stderr)
+        sys.exit(1)
     if status_code != 200:
         print(f"Signum: failed to update bug #{number} (HTTP {status_code}): {body}", file=sys.stderr)
         sys.exit(1)
@@ -3587,22 +3700,7 @@ def _resolve_bug(project_id, bug_number):
         print(f"Signum: bug number must be an integer, got '{bug_number}'", file=sys.stderr)
         sys.exit(1)
 
-    list_url = f"{service_url}/api/portal/projects/{project_id}/bugs"
-    try:
-        status_code, body = api_request(list_url, headers=headers)
-    except ConnectionError as e:
-        print(f"Signum: failed to fetch bugs — {e}", file=sys.stderr)
-        sys.exit(1)
-    if status_code != 200:
-        print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
-        sys.exit(1)
-
-    bugs = json.loads(body)
-    match = next((b for b in bugs if b.get("number") == number), None)
-    if not match:
-        print(f"Signum: bug #{number} not found in '{project_id}'", file=sys.stderr)
-        sys.exit(1)
-
+    match, _ = _require_bug(headers, service_url, project_id, number)
     return cfg, headers, service_url, match
 
 
@@ -3913,7 +4011,7 @@ def list_backlog(project_id=None, view="tree", status_filter=None, priority_filt
         if include_all:
             active = list(items)
         elif status_filter:
-            active = [i for i in items if i.get("status") == status_filter]
+            active = [i for i in items if i.get("status") == status_to_send("backlog", status_filter)]
         else:
             active = [i for i in items if i.get("status") not in ("completed", "archived")]
         if priority_filter:
@@ -5585,6 +5683,204 @@ def create_bug(project_id, title, description, severity="medium", image_paths=No
 
 
 # ---------------------------------------------------------------------------
+# Items — every kind in one number series (at Awolve: Signum spec 050)
+# ---------------------------------------------------------------------------
+#
+# The `/items` endpoints serve implementation items, bugs and activities with
+# the project's single number series, the kind and the shared status. The
+# backlog and bug commands keep their old shapes. A bug moved into the series
+# keeps its old number in every bug command; here it is shown by its item
+# number, with the bug number beside it.
+
+def _item_api(method, url, headers, data=None):
+    """Call an /items endpoint. Returns (status, body); exits when the server
+    has no such route or cannot be reached."""
+    try:
+        status_code, body = api_request(url, method=method, headers=headers, data=data)
+    except ConnectionError as e:
+        print(f"Signum: request failed — {e}", file=sys.stderr)
+        sys.exit(1)
+    if _route_missing(status_code, body):
+        print(f"Signum: {NEWER_SIGNUM}", file=sys.stderr)
+        sys.exit(1)
+    return status_code, body
+
+
+def _item_ref(item):
+    """`#74`, or `#74 (Bug #1)` for a bug that had a bug number."""
+    ref = f"#{item.get('number')}"
+    if item.get("kind") == "bug" and item.get("legacyBugNumber") is not None:
+        ref += f" (Bug #{item['legacyBugNumber']})"
+    return ref
+
+
+def _item_number(ref):
+    try:
+        return int(str(ref).lstrip("#"))
+    except ValueError:
+        print(f"Signum: item number must be an integer, got '{ref}'", file=sys.stderr)
+        sys.exit(1)
+
+
+def _fetch_item(headers, service_url, project_id, ref, legacy_bug=False):
+    """One item by its number, or by its old bug number with `legacy_bug`. Exits when missing."""
+    number = _item_number(ref)
+    url = f"{service_url}/api/portal/projects/{project_id}/items/by-number/{number}"
+    if legacy_bug:
+        url += "?legacy=bug"
+    status_code, body = _item_api("GET", url, headers)
+    if status_code == 404:
+        what = f"bug #{number}" if legacy_bug else f"item #{number}"
+        print(f"Signum: {what} not found in '{project_id}'", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"Signum: failed to fetch item #{number} (HTTP {status_code}): {body}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(body)
+
+
+def list_items(project_id=None, kinds=None, state=None, source=None, include_all=False, as_json=False):
+    """List a project's items of every kind (or of `kinds`), newest first.
+
+    Done items (completed, archived) are left out unless `include_all` or a
+    `state` is given. `state` takes a shared status or an old one.
+    """
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+    for k in kinds or []:
+        if k not in ITEM_KINDS:
+            print(f"Signum: --kind must be one of {', '.join(ITEM_KINDS)}; got '{k}'", file=sys.stderr)
+            sys.exit(1)
+
+    projects = cfg["projects"]
+    if project_id:
+        projects = [p for p in projects if p["id"] == project_id]
+        if not projects:
+            print(f"Signum: project '{project_id}' not in config", file=sys.stderr)
+            sys.exit(1)
+
+    query = {}
+    if kinds:
+        query["kind"] = ",".join(kinds)
+    if state:
+        query["state"] = state
+    if source:
+        query["source"] = source
+    qs = ("?" + urllib.parse.urlencode(query)) if query else ""
+
+    json_out = {}
+    for proj in projects:
+        status_code, body = _item_api("GET", f"{service_url}/api/portal/projects/{proj['id']}/items{qs}", headers)
+        if status_code != 200:
+            print(f"Signum: failed to fetch items for '{proj['id']}' (HTTP {status_code}): {body}", file=sys.stderr)
+            sys.exit(1)
+        items = json.loads(body)
+        if not include_all and not state:
+            items = [i for i in items if i.get("state") not in ("completed", "archived")]
+        if as_json:
+            json_out[proj["id"]] = items
+            continue
+        scope = state or ("" if include_all else "open")
+        print(f"Signum: {len(items)} {scope + ' ' if scope else ''}item(s) in '{proj['id']}'")
+        if not items:
+            print("  (no items)")
+        for item in items:
+            who = _assignee_label(item)
+            line = f"  {_item_ref(item)} [{item.get('kind', '?')}] {item.get('label') or item.get('state', '?')} — {item.get('title', 'untitled')}"
+            if who:
+                line += f"  → {who}"
+            print(line)
+
+    if as_json:
+        print(json.dumps(json_out[project_id] if project_id else json_out, indent=2, ensure_ascii=False))
+
+
+def view_item(project_id, ref, legacy_bug=False, as_json=False):
+    """Show one item of any kind by its number (or old bug number with `legacy_bug`)."""
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+    item = _fetch_item(headers, service_url, project_id, ref, legacy_bug)
+
+    if as_json:
+        print(json.dumps(item, indent=2, ensure_ascii=False))
+        return
+
+    kind = item.get("kind", "?")
+    state = item.get("state", "?")
+    print(f"#{item.get('number')} [{kind}] {item.get('title', 'untitled')}")
+    if kind == "bug" and item.get("legacyBugNumber") is not None:
+        print(f"  bug:       #{item['legacyBugNumber']} (its number in the bug commands)")
+    label = item.get("label")
+    print(f"  state:     {state}" + (f" ({label})" if label and label.lower().replace(" ", "_") != state else ""))
+    print(f"  priority:  {item.get('priority', '?')}")
+    if kind == "bug":
+        print(f"  severity:  {item.get('severity', '?')}")
+        reporter = _reporter_label(item)
+        if reporter:
+            print(f"  reporter:  {reporter}")
+    print(f"  assignee:  {_assignee_label(item) or '(unassigned)'}")
+    waits_for = item.get("waitsForUserName") or item.get("waitsForUserEmail") or item.get("waitsForName")
+    if waits_for:
+        print(f"  waits for: {waits_for}")
+    tag_names = _tag_names(item)
+    if tag_names:
+        print(f"  tags:      {' '.join('#' + n for n in tag_names)}")
+    deployed = _deployed_line(item)
+    if deployed:
+        print(f"  deployed:  {deployed}")
+    print(f"  created:   {item.get('createdAt', '?')}")
+    print(f"  portal:    {service_url}/portal/{project_id}/items/{item.get('number')}")
+
+    description, images = _strip_inline_images(item.get("description") or "")
+    print()
+    print("Description:")
+    print(description or "(no description)")
+    for heading, key in (("Steps to reproduce", "steps"), ("Expected", "expected"), ("Actual", "actual"), ("Outcome", "outcome")):
+        text, _ = _strip_inline_images(item.get(key))
+        if text:
+            print(f"\n{heading}:")
+            print(text)
+    if images and kind == "bug" and item.get("legacyBugNumber") is not None:
+        print(f"\n{images} inline image(s) — save them with: specs-cli.py view-bug {project_id} {item['legacyBugNumber']} --images")
+
+
+# The service's refusals for a change of kind, said plainly.
+ITEM_KIND_ERRORS = {
+    "kind_change_forbidden": "only internal users may change an item's kind",
+    "description_required": "a bug needs a description — add one first (backlog-update --description)",
+}
+
+
+def set_item_kind(project_id, ref, kind, legacy_bug=False):
+    """Change an item's kind. It keeps its number; its status moves to the
+    nearest one the new kind allows, and fields the new kind does not use are
+    kept, hidden."""
+    if kind not in ITEM_KINDS:
+        print(f"Signum: kind must be one of {', '.join(ITEM_KINDS)}; got '{kind}'", file=sys.stderr)
+        sys.exit(1)
+    cfg, headers = _require_config_and_auth()
+    service_url = cfg["service_url"]
+    item = _fetch_item(headers, service_url, project_id, ref, legacy_bug)
+    if item.get("kind") == kind:
+        print(f"Signum: {_item_ref(item)} is already {kind}")
+        return
+
+    status_code, body = _item_api("PATCH", f"{service_url}/api/portal/items/{item['id']}", headers, data={"kind": kind})
+    if status_code != 200:
+        try:
+            code = json.loads(body).get("error")
+        except (TypeError, ValueError, AttributeError):
+            code = None
+        reason = ITEM_KIND_ERRORS.get(code) or body
+        print(f"Signum: could not change {_item_ref(item)} to {kind} (HTTP {status_code}): {reason}", file=sys.stderr)
+        sys.exit(1)
+
+    updated = json.loads(body)
+    moved = f" (state {item.get('state')} → {updated.get('state')})" if updated.get("state") != item.get("state") else ""
+    print(f"Signum: {_item_ref(item)} {item.get('kind')} → {updated.get('kind', kind)}{moved} — {item.get('title', '')}")
+
+
+# ---------------------------------------------------------------------------
 # Feature management
 # ---------------------------------------------------------------------------
 
@@ -7061,14 +7357,8 @@ def _resolve_bug_id(headers, service_url, project_id, ref):
         n = int(s)
     except ValueError:
         return (None, None)
-    url = f"{service_url}/api/portal/projects/{project_id}/bugs"
-    sc, body = api_request(url, headers=headers)
-    if sc != 200:
-        return (None, None)
-    for b in json.loads(body):
-        if b.get("number") == n:
-            return (b.get("id"), b)
-    return (None, None)
+    _, bug, _ = _find_bug(headers, service_url, project_id, n)
+    return (bug.get("id"), bug) if bug else (None, None)
 
 
 def attach_to_bug(project_id, bug_ref, file_path):
@@ -8404,8 +8694,8 @@ def main():
     elif cmd == "set-status":
         if len(args) < 3:
             print("Usage: specs-cli.py set-status <feature-or-doc-id> <status>", file=sys.stderr)
-            print(f"  Feature statuses: {', '.join(FEATURE_STATUSES)}", file=sys.stderr)
-            print(f"  Document statuses: {', '.join(DOCUMENT_STATUSES)}", file=sys.stderr)
+            print(f"  Feature statuses: {', '.join(accepted_statuses('feature'))}", file=sys.stderr)
+            print(f"  Document statuses: {', '.join(accepted_statuses('document'))}", file=sys.stderr)
             sys.exit(1)
         set_status(args[1], args[2])
     elif cmd == "my-daily":
@@ -8475,7 +8765,7 @@ def main():
     elif cmd == "set-bug-status":
         if len(args) < 4:
             print("Usage: specs-cli.py set-bug-status <project-id> <bug-number> <status>", file=sys.stderr)
-            print(f"  Statuses: {', '.join(BUG_STATUSES)}", file=sys.stderr)
+            print(f"  Statuses: {', '.join(accepted_statuses('bug'))}", file=sys.stderr)
             sys.exit(1)
         set_bug_status(args[1], args[2], args[3])
     elif cmd == "update-bug":
@@ -8609,6 +8899,40 @@ def main():
         sev = filtered[3] if len(filtered) > 3 else "medium"
         tag_list = [t for t in (v.strip() for v in (tags_val or "").split(",")) if t] or None
         create_bug(filtered[0], filtered[1], filtered[2], sev, images or None, tags=tag_list)
+    elif cmd == "items":
+        VALUE_FLAGS_ITEMS = {"--kind", "--state", "--status", "--source"}
+        proj = None
+        kinds, state, source = [], None, None
+        for i, a in enumerate(args[1:], 1):
+            if a in VALUE_FLAGS_ITEMS:
+                if i + 1 >= len(args):
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
+                    sys.exit(1)
+                value = args[i + 1]
+                if a == "--kind": kinds.extend(k.strip() for k in value.split(",") if k.strip())
+                elif a == "--source": source = value
+                else: state = value
+                continue
+            if a.startswith("-") or args[i - 1] in VALUE_FLAGS_ITEMS:
+                continue
+            if proj is None:
+                proj = a
+        list_items(proj, kinds=kinds or None, state=state, source=source,
+                   include_all="--all" in args, as_json="--json" in args)
+    elif cmd in ("item", "item-kind"):
+        positional = [a for a in args[1:] if a not in ("--json", "--bug")]
+        need = 3 if cmd == "item-kind" else 2
+        if len(positional) < need:
+            if cmd == "item":
+                print("Usage: specs-cli.py item <project-id> <#N> [--bug] [--json]", file=sys.stderr)
+            else:
+                print(f"Usage: specs-cli.py item-kind <project-id> <#N> <{'|'.join(ITEM_KINDS)}> [--bug]", file=sys.stderr)
+            print("  --bug reads the number as a bug number (the one the bug commands use)", file=sys.stderr)
+            sys.exit(1)
+        if cmd == "item":
+            view_item(positional[0], positional[1], legacy_bug="--bug" in args, as_json="--json" in args)
+        else:
+            set_item_kind(positional[0], positional[1], positional[2], legacy_bug="--bug" in args)
     elif cmd == "view-backlog":
         as_json = "--json" in args
         positional = [a for a in args[1:] if a != "--json"]
@@ -8941,9 +9265,11 @@ def main():
             sys.exit(1)
         # Guard the status enum client-side (the API also rejects it) so a bad
         # value fails fast with the valid set, instead of a round-trip 400.
-        if "status" in fields and fields["status"] not in BACKLOG_STATUSES:
-            print(f"Signum: --status must be one of {', '.join(BACKLOG_STATUSES)}; got '{fields['status']}'", file=sys.stderr)
+        if "status" in fields and fields["status"] not in accepted_statuses("backlog"):
+            print(f"Signum: --status must be one of {', '.join(accepted_statuses('backlog'))}; got '{fields['status']}'", file=sys.stderr)
             sys.exit(1)
+        if "status" in fields:
+            fields["status"] = status_to_send("backlog", fields["status"])
         if tag_edit["replace"] is not None and (tag_edit["add"] or tag_edit["remove"]):
             print("Signum: --tags replaces the whole set; combine --add-tag/--remove-tag instead", file=sys.stderr)
             sys.exit(1)

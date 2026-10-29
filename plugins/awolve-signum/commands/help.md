@@ -77,6 +77,9 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:bug-comment` | Add a comment to a bug |
 | `/awolve-signum:edit-bug-comment` | Edit a bug comment (author only) |
 | `/awolve-signum:delete-bug-comment` | Delete a bug comment (author only) |
+| `/awolve-signum:items` | List items of every kind in one number series, with kind and shared status (newer Signum servers) |
+| `/awolve-signum:item` | Show one item of any kind; a bug shows its bug number beside its item number |
+| `/awolve-signum:item-kind` | Change an item's kind — implementation, bug, activity (internal users only) |
 | `/awolve-signum:edit-comment` | Edit a spec-doc comment (author only) |
 | `/awolve-signum:delete-comment` | Delete a spec-doc comment (author only) |
 
