@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.60.0 — 2026-10-29 — Björn Allvin
+
+- **Every call names the plugin and its version.** Requests carry `X-Signum-Client: awolve-signum/<version>` (or `awolve-spec/<version>` from the legacy copy), so the service can tell which client versions still call its older endpoints.
+- **Bug commands look a bug up by its number.** `bug`, `set-bug-status`, `update-bug`, `bug-comment` and the rest ask the service for one bug instead of downloading the project's whole list. A service without that lookup is detected and the old way is used, so nothing changes against older servers.
+- **New commands `items`, `item` and `item-kind`** for services with one number series for every kind of work (implementation, bug, activity): list and filter by kind and status, show one item with its kind's fields, change an item's kind. A bug shows its bug number beside its item number. Against an older service they say a newer one is needed.
+- **Shared status values are accepted** by `set-bug-status`, `backlog-update`, `set-status` and the `--status` filters, beside the old ones. Where an old value means the same, the old one is sent, so older services take it.
+
 ## 0.59.0 — 2026-10-27 — Björn Allvin
 
 - **Spec files edited outside Write/Edit are pushed too.** The push hook only ran after Claude's Write and Edit, so a spec changed with `sed -i`, a heredoc, `cp` or a script stayed local, and nothing said so; such edits could sit unpushed for months. Now a Bash command that names a configured specs path, and every end of turn (new `Stop` hook), sweeps the configured paths for spec files changed since the last sweep and pushes them. Only files under the paths in `.claude/specs.md` / `.claude/specs.local.md` are looked at. `push()` still skips unchanged content and refuses with a conflict when the service has a newer version, so a stale copy cannot overwrite newer work. The first sweep on a machine looks back one minute, not at older edits, and a sweep pushes at most 25 files.
