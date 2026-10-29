@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.61.0 — 2026-10-29 — Björn Allvin
+
+- **A pushed spec no longer gets rewritten by the next teammate's session.** Push wrote only `spec_version` and `last_synced_hash` back into the file; `feature_status`, `doc_status` and `source` were left for pull to add. So the first teammate to start a session after a push rewrote the frontmatter, and a synced folder (OneDrive, SharePoint) showed them as the last editor of a document they never opened. Push now reads those fields from the project manifest and writes them too, so pull on other machines finds nothing to change. If the manifest can't be read, the push still succeeds and the next pull fills the fields in, as before. A status changed in the portal is still written by whichever machine pulls first.
+
 ## 0.60.0 — 2026-10-29 — Björn Allvin
 
 - **Every call names the plugin and its version.** Requests carry `X-Signum-Client: awolve-signum/<version>` (or `awolve-spec/<version>` from the legacy copy), so the service can tell which client versions still call its older endpoints.

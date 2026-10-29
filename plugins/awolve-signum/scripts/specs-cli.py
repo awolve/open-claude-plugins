@@ -1708,6 +1708,33 @@ def _current_user_email(headers):
 # Push
 # ---------------------------------------------------------------------------
 
+def _synced_status_fields(service_url, headers, project_id, doc_id):
+    """The status frontmatter pull writes for one doc, from the project manifest.
+
+    Returns {} when the manifest cannot be read; the next pull fills the fields in.
+    """
+    get_headers = {k: v for k, v in headers.items() if k != "Content-Type"}
+    try:
+        status, body = api_request(
+            f"{service_url}/api/sync/projects/{project_id}/manifest", headers=get_headers)
+        if status != 200:
+            return {}
+        docs = json.loads(body).get("documents", [])
+    except (ConnectionError, ValueError, AttributeError):
+        return {}
+    for doc in docs:
+        if doc.get("id") == doc_id:
+            fields = {}
+            if doc.get("feature_status"):
+                fields["feature_status"] = doc["feature_status"]
+            if doc.get("doc_status"):
+                fields["doc_status"] = doc["doc_status"]
+            if doc.get("source_url"):
+                fields["source"] = doc["source_url"]
+            return fields
+    return {}
+
+
 def push(file_path, base_version_override=None):
     """Push a single spec file to the service.
 
@@ -1809,6 +1836,11 @@ def push(file_path, base_version_override=None):
     # drift correctly. Without this, a subsequent manual edit would look
     # indistinguishable from an unmodified synced file.
     meta["last_synced_hash"] = hashlib.sha256(body.strip().encode("utf-8")).hexdigest()
+    # Write the status fields pull would write, so the next pull on any other
+    # machine finds nothing to change. Otherwise the first teammate to start a
+    # session rewrites the frontmatter and the file host shows them as the
+    # last editor of a document they never opened.
+    meta.update(_synced_status_fields(service_url, headers, proj["id"], doc_id))
 
     atomic_write(abs_path, render_frontmatter(meta, body))
 
