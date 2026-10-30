@@ -96,6 +96,9 @@ Run `/awolve-signum:help` for the full list, or see below:
 | `/awolve-signum:epic-create` | Create an epic |
 | `/awolve-signum:epic-set` | Put a feature or an item under an epic |
 | `/awolve-signum:epic-promote` | Turn an item with sub-items into an epic |
+| `/awolve-signum:phase` | Show the current phase(s); `phase-add`, `phase-update`, `phase-delete` manage them |
+| `/awolve-signum:milestones` | List deadlines and dates; `milestone-create`, `-update`, `-delete` manage them |
+| `/awolve-signum:milestone-add` | Put items in a deadline (single items, or an epic's or feature's open items) |
 | `/awolve-signum:bugs` | List open bugs |
 | `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |

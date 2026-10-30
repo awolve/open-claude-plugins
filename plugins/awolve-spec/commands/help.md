@@ -51,12 +51,21 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:backlog` | List backlog items for a project (filterable by assignee and tag) |
 | `/awolve-spec:backlog-add` | Add a new idea or feature request to the backlog |
 | `/awolve-spec:view-backlog` | Show full details of a single backlog item |
-| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, tags, feature link, or deployment info |
+| `/awolve-spec:backlog-update` | Update an item's title, description, priority, status, assignee, tags, feature link, deadline, or deployment info |
 | `/awolve-spec:backlog-set-parent` | Make an item a sub-item of a top-level item, or clear its parent |
 | `/awolve-spec:epics` | List a project's epics (E1, E2, …) with status, owner, counts and due date |
 | `/awolve-spec:epic-create` | Create an epic |
 | `/awolve-spec:epic-set` | Put a feature or an item under an epic (or none) |
 | `/awolve-spec:epic-promote` | Turn an item with sub-items into an epic (shows the plan first) |
+| `/awolve-spec:phase` | Show the current phase(s); `--all` lists every phase |
+| `/awolve-spec:phase-add` | Add a phase (name, dates, optional colour; phases may overlap) |
+| `/awolve-spec:phase-update` | Change a phase's name, dates or colour |
+| `/awolve-spec:phase-delete` | Delete a phase |
+| `/awolve-spec:milestones` | List deadlines and dates with progress and overdue |
+| `/awolve-spec:milestone-create` | Create a deadline (holds items) or a date (holds none) |
+| `/awolve-spec:milestone-update` | Change a milestone's name, date, kind or description |
+| `/awolve-spec:milestone-delete` | Delete a milestone; a deadline's items go back to Unplanned |
+| `/awolve-spec:milestone-add` | Put items in a deadline: single items, or an epic's or a feature's open items |
 | `/awolve-spec:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-spec:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-spec:backlog-delete` | Soft-delete a backlog item (cascades to children) |

@@ -79,10 +79,27 @@ Usage:
     specs-cli.py epic-promote <project-id> <#item> [--yes]
                                        — Turn an item with sub-items into an epic. Shows the plan; changes
                                          nothing without --yes (internal users only)
+    specs-cli.py phase <project-id> [--all] [--json]
+                                       — The current phase(s) and their dates; --all lists every phase
+    specs-cli.py phase-add <project-id> <name> --start YYYY-MM-DD [--end YYYY-MM-DD] [--color C]
+                                       — Add a phase. Phases may overlap; no other phase changes
+                                         (colours: blue|teal|violet|amber|red|green|pink|slate; internal users only)
+    specs-cli.py phase-update <project-id> <phase> [--name N] [--start D] [--end D | --open-ended] [--color C | --auto-color]
+    specs-cli.py phase-delete <project-id> <phase>
+                                       — A phase is named by its name or id
+    specs-cli.py milestones <project-id> [--json]
+                                       — Deadlines and dates by date, with progress and overdue
+    specs-cli.py milestone-create <project-id> <name> --date YYYY-MM-DD --kind deadline|date [--description T]
+    specs-cli.py milestone-update <project-id> <milestone> [--name N] [--date D] [--kind K] [--description T | --clear-description]
+    specs-cli.py milestone-delete <project-id> <milestone>
+                                       — Deleting a deadline puts its items back in Unplanned
+    specs-cli.py milestone-add <project-id> <deadline> (--items 12,15 | --epic E3 | --feature <name>)
+                                       — Put items in a deadline; an epic or feature adds its open items
     specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
                                        [--feature NAME|PROJECT/NAME | --clear-feature]
+                                       [--milestone <deadline name or id> | --unmilestone]
                                        — Update fields on an existing backlog item.
                                          --tags replaces the set; --add-tag/--remove-tag are repeatable deltas.
                                          --deployed-stage/--deployed-url record where the fix runs (set together)
@@ -5182,7 +5199,7 @@ def update_backlog_item(project_id, item_ref, fields, tag_edit=None):
     done by the caller before the round-trip.
     """
     if not fields and not tag_edit:
-        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--assignee/--unassign/--feature/--clear-feature", file=sys.stderr)
+        print("Signum: nothing to update — pass at least one of --title/--description/--priority/--status/--assignee/--unassign/--feature/--clear-feature/--milestone/--unmilestone", file=sys.stderr)
         sys.exit(1)
 
     cfg = config.read_config()
@@ -5586,6 +5603,297 @@ def promote_epic(project_id, item_ref, confirmed=False):
     print(f"Signum: promoted {label} to {_epic_label(result)}; {label} is archived")
     if result.get("number"):
         print(f"  portal: {service_url}/portal/{project_id}/epics/E{result['number']}")
+
+
+# ── Plan: phases and milestones (spec 052) ───────────────────────────────────
+#
+# A project's phases (named stretches of time with dates; may overlap; none by
+# default) and milestones (a `deadline` that holds items, or a plain `date`).
+# Reading needs project access; changing them is for internal users only, and
+# the service says `timing_forbidden` to anyone else.
+
+NO_PLAN_YET = "this Signum service has no phases or milestones yet (they arrive with spec 052)"
+
+PLAN_ERROR_HINTS = {
+    "timing_forbidden": "only internal users can change phases and milestones",
+    "name_required": "a name is required",
+    "invalid_date": "dates are YYYY-MM-DD",
+    "end_before_start": "the end is before the start",
+    "invalid_color": "the colour must be one of " + ", ".join(
+        ["blue", "teal", "violet", "amber", "red", "green", "pink", "slate"]),
+    "invalid_kind": "the kind must be deadline or date",
+    "phase_not_found": "that phase does not exist (list them with `phase <project> --all`)",
+    "milestone_not_found": "that milestone does not exist (list them with `milestones <project>`)",
+    "milestone_is_date": "a date holds no items; make it a deadline first, or pick a deadline",
+    "milestone_has_items": "this deadline still holds items; move them out before making it a date",
+    "item_not_found": "some of those items are not in this project",
+    "epic_not_found": "that epic is not in this project",
+    "feature_not_found": "that feature is not in this project",
+    "one_of_required": "give exactly one of --items, --epic or --feature",
+}
+
+PHASE_COLORS = ("blue", "teal", "violet", "amber", "red", "green", "pink", "slate")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _plan_call(headers, url, method="GET", payload=None, what="request"):
+    """One plan API call: the parsed JSON, or exit with the reason."""
+    try:
+        status_code, body = api_request(url, method=method, data=payload,
+                                        headers={**headers, "Content-Type": "application/json"} if payload is not None else headers)
+    except ConnectionError as e:
+        print(f"Signum: {what} failed — {e}", file=sys.stderr)
+        sys.exit(1)
+    if _is_route_missing(status_code, body):
+        print(f"Signum: {NO_PLAN_YET}", file=sys.stderr)
+        sys.exit(1)
+    if status_code not in (200, 201):
+        code, _detail = _error_code(body)
+        hint = PLAN_ERROR_HINTS.get(code) if isinstance(code, str) else None
+        if hint:
+            print(f"Signum: refused — {hint} ({code})", file=sys.stderr)
+        else:
+            print(f"Signum: {what} failed (HTTP {status_code}): {code}", file=sys.stderr)
+        sys.exit(1)
+    return json.loads(body) if body else {}
+
+
+def _check_date(flag, value):
+    if value is not None and not DATE_RE.match(value):
+        print(f"Signum: {flag} must be YYYY-MM-DD; got '{value}'", file=sys.stderr)
+        sys.exit(1)
+
+
+def _project_url(service_url, project_id, tail):
+    return f"{service_url}/api/portal/projects/{urllib.parse.quote(project_id, safe='')}/{tail}"
+
+
+def _fetch_phases(headers, service_url, project_id):
+    return _plan_call(headers, _project_url(service_url, project_id, "phases"), what="reading phases")
+
+
+def _fetch_milestones(headers, service_url, project_id):
+    return _plan_call(headers, _project_url(service_url, project_id, "milestones"), what="reading milestones")
+
+
+def _find_by_name_or_id(rows, ref, what, project_id):
+    """A phase or milestone by id or name (case-insensitive); exits when none or several match."""
+    s = str(ref or "").strip()
+    exact = [r for r in rows if r.get("id") == s]
+    if exact:
+        return exact[0]
+    named = [r for r in rows if (r.get("name") or "").lower() == s.lower()]
+    if len(named) == 1:
+        return named[0]
+    if len(named) > 1:
+        print(f"Signum: {len(named)} {what}s are called '{s}' in '{project_id}'; use the id:", file=sys.stderr)
+        for r in named:
+            print(f"  {r['id']}  {_phase_dates(r) if 'startDate' in r else r.get('date')}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Signum: no {what} '{s}' in '{project_id}'", file=sys.stderr)
+    sys.exit(1)
+
+
+def _phase_dates(p):
+    return f"{p['startDate']} – {p.get('endDate') or 'open-ended'}"
+
+
+def _print_phase_row(p, current_ids=()):
+    mark = "*" if p["id"] in current_ids else " "
+    color = f"  [{p['color']}]" if p.get("color") else ""
+    print(f"  {mark} {p['name']:<24} {_phase_dates(p):<27} {p.get('state', ''):<12}{color}")
+
+
+def show_phase(project_id, show_all=False, as_json=False):
+    """`phase <project>`: the current phases and their dates; --all lists every phase."""
+    headers, service_url = _epic_cli_context(project_id)
+    current = _plan_call(headers, _project_url(service_url, project_id, "phase"), what="reading the phase")
+    phases = _fetch_phases(headers, service_url, project_id) if show_all else None
+    if as_json:
+        print(json.dumps({"current": current.get("phases", []), **({"phases": phases} if phases is not None else {})}, indent=2, ensure_ascii=False))
+        return
+    now = current.get("phases") or []
+    if not now:
+        print(f"Signum: no current phase in '{project_id}'")
+    else:
+        names = ", ".join(f"{p['name']} ({_phase_dates(p)})" for p in now)
+        print(f"Signum: current phase{'s' if len(now) > 1 else ''} in '{project_id}': {names}")
+    if phases is not None:
+        print()
+        if not phases:
+            print("  (no phases)")
+        ids = {p["id"] for p in now}
+        for p in phases:
+            _print_phase_row(p, ids)
+
+
+def add_phase(project_id, name, start, end=None, color=None):
+    """`phase-add`: a new phase. Phases may overlap; no other phase changes."""
+    _check_date("--start", start)
+    _check_date("--end", end)
+    if color and color not in PHASE_COLORS:
+        print(f"Signum: --color must be one of {', '.join(PHASE_COLORS)}; got '{color}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    payload = {"name": name, "startDate": start, "endDate": end, **({"color": color} if color else {})}
+    out = _plan_call(headers, _project_url(service_url, project_id, "phases"), "POST", payload, what="adding the phase")
+    p = out.get("phase", {})
+    print(f"Signum: added phase '{p.get('name', name)}' ({_phase_dates(p)}) in '{project_id}'")
+    print(f"  portal: {service_url}/portal/{project_id}/plan")
+
+
+def update_phase(project_id, phase_ref, fields):
+    """`phase-update`: change a phase's name, dates or colour."""
+    if not fields:
+        print("Signum: nothing to update — pass --name, --start, --end, --open-ended, --color or --auto-color", file=sys.stderr)
+        sys.exit(1)
+    _check_date("--start", fields.get("startDate"))
+    _check_date("--end", fields.get("endDate"))
+    if fields.get("color") and fields["color"] not in PHASE_COLORS:
+        print(f"Signum: --color must be one of {', '.join(PHASE_COLORS)}; got '{fields['color']}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    phase = _find_by_name_or_id(_fetch_phases(headers, service_url, project_id), phase_ref, "phase", project_id)
+    out = _plan_call(headers, f"{service_url}/api/portal/phases/{phase['id']}", "PATCH", fields, what="updating the phase")
+    p = out.get("phase", {})
+    print(f"Signum: updated phase '{p.get('name')}' ({_phase_dates(p)})")
+
+
+def delete_phase(project_id, phase_ref):
+    """`phase-delete`: remove a phase. The others stay as they are."""
+    headers, service_url = _epic_cli_context(project_id)
+    phase = _find_by_name_or_id(_fetch_phases(headers, service_url, project_id), phase_ref, "phase", project_id)
+    _plan_call(headers, f"{service_url}/api/portal/phases/{phase['id']}", "DELETE", what="deleting the phase")
+    print(f"Signum: deleted phase '{phase['name']}' ({_phase_dates(phase)})")
+
+
+def _milestone_status(m):
+    if m.get("overdue"):
+        return "overdue"
+    if m.get("kind") == "date":
+        return "passed" if m.get("state") == "completed" else "upcoming"
+    progress = m.get("progress") or {}
+    if not progress.get("total"):
+        return "no items yet"
+    return f"{progress.get('done', 0)}/{progress['total']} done"
+
+
+def list_milestones(project_id, as_json=False):
+    """`milestones <project>`: deadlines and dates together, by date."""
+    headers, service_url = _epic_cli_context(project_id)
+    rows = _fetch_milestones(headers, service_url, project_id)
+    if as_json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return
+    print(f"Signum: {len(rows)} milestone(s) in '{project_id}'")
+    print()
+    if not rows:
+        print("  (none)")
+    for m in rows:
+        print(f"  {m['date']}  {m['kind']:<8}  {m['name']:<32} {_milestone_status(m)}")
+
+
+def create_milestone(project_id, name, date, kind, description=None):
+    """`milestone-create`: a deadline (holds items) or a date (holds none)."""
+    _check_date("--date", date)
+    if kind not in ("deadline", "date"):
+        print(f"Signum: --kind must be deadline or date; got '{kind}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    payload = {"name": name, "date": date, "kind": kind, **({"description": description} if description else {})}
+    m = _plan_call(headers, _project_url(service_url, project_id, "milestones"), "POST", payload, what="creating the milestone")
+    print(f"Signum: created {m.get('kind', kind)} '{m.get('name', name)}' on {m.get('date', date)} in '{project_id}'")
+    if m.get("id"):
+        print(f"  portal: {service_url}/portal/{project_id}/plan/milestones/{m['id']}")
+
+
+def update_milestone(project_id, milestone_ref, fields):
+    """`milestone-update`: change a milestone's name, date, kind or description."""
+    if not fields:
+        print("Signum: nothing to update — pass --name, --date, --kind or --description", file=sys.stderr)
+        sys.exit(1)
+    _check_date("--date", fields.get("date"))
+    if fields.get("kind") and fields["kind"] not in ("deadline", "date"):
+        print(f"Signum: --kind must be deadline or date; got '{fields['kind']}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    m = _find_by_name_or_id(_fetch_milestones(headers, service_url, project_id), milestone_ref, "milestone", project_id)
+    out = _plan_call(headers, f"{service_url}/api/portal/milestones/{m['id']}", "PATCH", fields, what="updating the milestone")
+    print(f"Signum: updated {out.get('kind')} '{out.get('name')}' ({out.get('date')})")
+
+
+def delete_milestone(project_id, milestone_ref):
+    """`milestone-delete`: remove a milestone; a deadline's items go back to Unplanned."""
+    headers, service_url = _epic_cli_context(project_id)
+    m = _find_by_name_or_id(_fetch_milestones(headers, service_url, project_id), milestone_ref, "milestone", project_id)
+    out = _plan_call(headers, f"{service_url}/api/portal/milestones/{m['id']}", "DELETE", what="deleting the milestone")
+    moved = out.get("unplanned", 0)
+    tail = f"; {moved} item(s) back to Unplanned" if moved else ""
+    print(f"Signum: deleted {m['kind']} '{m['name']}'{tail}")
+
+
+def add_to_milestone(project_id, milestone_ref, items=None, epic=None, feature=None):
+    """`milestone-add`: put items in a deadline — single items, or an epic's or a feature's open items."""
+    given = [x for x in (items, epic, feature) if x]
+    if len(given) != 1:
+        print("Signum: give exactly one of --items, --epic or --feature", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    m = _find_by_name_or_id(_fetch_milestones(headers, service_url, project_id), milestone_ref, "milestone", project_id)
+    if items:
+        refs = []
+        for raw in str(items).split(","):
+            s = raw.strip().lstrip("#")
+            if s:
+                refs.append(int(s) if s.isdigit() else s)
+        payload = {"itemIds": refs}
+    elif epic:
+        payload = {"epicId": epic}
+    else:
+        payload = {"featureId": feature}
+    out = _plan_call(headers, f"{service_url}/api/portal/milestones/{m['id']}/items", "POST", payload, what="adding items")
+    moved = f" ({out['moved']} moved from another deadline)" if out.get("moved") else ""
+    same = f"; {out['unchanged']} already in it" if out.get("unchanged") else ""
+    print(f"Signum: added {out.get('added', 0)} item(s) to '{m['name']}'{moved}{same}")
+
+
+def _parse_plan_args(cmd, args, value_flags, bare_flags=None):
+    """(positional, fields) for a plan command. `value_flags` maps a flag to the
+    field its value sets; `bare_flags` maps a valueless flag to (field, value),
+    such as --open-ended to (endDate, None). Unknown flags exit."""
+    bare_flags = bare_flags or {}
+    positional, fields = [], {}
+    skip_next = False
+    for i, a in enumerate(args[1:], 1):
+        if skip_next:
+            skip_next = False
+            continue
+        if a in bare_flags:
+            key, value = bare_flags[a]
+            fields[key] = value
+            continue
+        if a in value_flags:
+            if i + 1 >= len(args):
+                print(f"Signum: {a} requires a value", file=sys.stderr)
+                sys.exit(1)
+            fields[value_flags[a]] = args[i + 1]
+            skip_next = True
+            continue
+        if a.startswith("--"):
+            print(f"Signum: unknown flag '{a}' for {cmd}", file=sys.stderr)
+            sys.exit(1)
+        positional.append(a)
+    return positional, fields
+
+
+def _resolve_milestone_for_item(project_id, ref):
+    """`--milestone <id|name>` on backlog-update: the deadline's id, or exit."""
+    headers, service_url = _epic_cli_context(project_id)
+    m = _find_by_name_or_id(_fetch_milestones(headers, service_url, project_id), ref, "milestone", project_id)
+    if m.get("kind") != "deadline":
+        print(f"Signum: '{m['name']}' is a date; only a deadline holds items", file=sys.stderr)
+        sys.exit(1)
+    return m["id"]
 
 
 def delete_backlog_item(project_id, item_ref):
@@ -9167,6 +9475,64 @@ def main():
         tag_list = [t for t in (v.strip() for v in (tags_val or "").split(",")) if t] or None
         create_backlog_item(positional[0], positional[1], desc, pri, parent=parent_val, epic=epic_val,
                             assignee=assignee_val, tags=tag_list)
+    # Spec 052: phases and milestones.
+    elif cmd == "phase":
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if not positional:
+            print("Usage: specs-cli.py phase <project-id> [--all] [--json]", file=sys.stderr)
+            sys.exit(1)
+        show_phase(positional[0], show_all="--all" in args, as_json="--json" in args)
+    elif cmd == "phase-add":
+        positional, f = _parse_plan_args(cmd, args, {"--start": "start", "--end": "end", "--color": "color"})
+        if len(positional) < 2 or "start" not in f:
+            print("Usage: specs-cli.py phase-add <project-id> \"<name>\" --start YYYY-MM-DD [--end YYYY-MM-DD] [--color blue|teal|violet|amber|red|green|pink|slate]", file=sys.stderr)
+            sys.exit(1)
+        add_phase(positional[0], positional[1], f["start"], f.get("end"), f.get("color"))
+    elif cmd == "phase-update":
+        positional, f = _parse_plan_args(cmd, args,
+                                         {"--name": "name", "--start": "startDate", "--end": "endDate", "--color": "color"},
+                                         {"--open-ended": ("endDate", None), "--auto-color": ("color", None)})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py phase-update <project-id> <phase-name-or-id> [--name N] [--start YYYY-MM-DD] [--end YYYY-MM-DD | --open-ended] [--color C | --auto-color]", file=sys.stderr)
+            sys.exit(1)
+        update_phase(positional[0], positional[1], f)
+    elif cmd == "phase-delete":
+        positional, _ = _parse_plan_args(cmd, args, {})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py phase-delete <project-id> <phase-name-or-id>", file=sys.stderr)
+            sys.exit(1)
+        delete_phase(positional[0], positional[1])
+    elif cmd == "milestones":
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if not positional:
+            print("Usage: specs-cli.py milestones <project-id> [--json]", file=sys.stderr)
+            sys.exit(1)
+        list_milestones(positional[0], as_json="--json" in args)
+    elif cmd == "milestone-create":
+        positional, f = _parse_plan_args(cmd, args, {"--date": "date", "--kind": "kind", "--description": "description"})
+        if len(positional) < 2 or "date" not in f or "kind" not in f:
+            print("Usage: specs-cli.py milestone-create <project-id> \"<name>\" --date YYYY-MM-DD --kind deadline|date [--description T]", file=sys.stderr)
+            sys.exit(1)
+        create_milestone(positional[0], positional[1], f["date"], f["kind"], f.get("description"))
+    elif cmd == "milestone-update":
+        positional, f = _parse_plan_args(cmd, args, {"--name": "name", "--date": "date", "--kind": "kind", "--description": "description"},
+                                         {"--clear-description": ("description", None)})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py milestone-update <project-id> <milestone-name-or-id> [--name N] [--date YYYY-MM-DD] [--kind deadline|date] [--description T | --clear-description]", file=sys.stderr)
+            sys.exit(1)
+        update_milestone(positional[0], positional[1], f)
+    elif cmd == "milestone-delete":
+        positional, _ = _parse_plan_args(cmd, args, {})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py milestone-delete <project-id> <milestone-name-or-id>", file=sys.stderr)
+            sys.exit(1)
+        delete_milestone(positional[0], positional[1])
+    elif cmd == "milestone-add":
+        positional, f = _parse_plan_args(cmd, args, {"--items": "items", "--epic": "epic", "--feature": "feature"})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py milestone-add <project-id> <deadline-name-or-id> (--items 12,15 | --epic E3 | --feature <name>)", file=sys.stderr)
+            sys.exit(1)
+        add_to_milestone(positional[0], positional[1], items=f.get("items"), epic=f.get("epic"), feature=f.get("feature"))
     elif cmd == "epics":
         positional = [a for a in args[1:] if not a.startswith("--")]
         if not positional:
@@ -9254,6 +9620,19 @@ def main():
             if a == "--clear-feature":
                 fields["feature"] = None
                 continue
+            # Spec 052: the deadline the item is due by. --milestone takes a
+            # name or id and is resolved below; --unmilestone moves it back to
+            # Unplanned, the valueless twin as with --unassign.
+            if a == "--unmilestone":
+                fields["milestoneId"] = None
+                continue
+            if a == "--milestone":
+                if i + 1 >= len(args):
+                    print(f"Signum: {a} requires a value", file=sys.stderr)
+                    sys.exit(1)
+                fields["milestoneId"] = args[i + 1]
+                skip_next = True
+                continue
             # Spec 027: tag flags. --tags replaces the set; --add-tag and
             # --remove-tag are repeatable deltas folded against the item's
             # current tags once it has been resolved.
@@ -9284,7 +9663,7 @@ def main():
                 sys.exit(1)
             positional.append(a)
         if len(positional) < 2:
-            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME|PROJECT/NAME | --clear-feature]", file=sys.stderr)
+            print("Usage: specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL | --unassign] [--start YYYY-MM-DD] [--due YYYY-MM-DD] [--estimate HOURS] [--clear-start|--clear-due|--clear-estimate] [--tags a,b | --add-tag T | --remove-tag T | --clear-tags] [--deployed-stage S --deployed-url U | --clear-deployment] [--feature NAME|PROJECT/NAME | --clear-feature] [--milestone NAME|ID | --unmilestone]", file=sys.stderr)
             sys.exit(1)
         if "--assignee" in args and "--unassign" in args:
             print("Signum: --assignee and --unassign are mutually exclusive", file=sys.stderr)
@@ -9292,6 +9671,11 @@ def main():
         if "--feature" in args and "--clear-feature" in args:
             print("Signum: --feature and --clear-feature are mutually exclusive", file=sys.stderr)
             sys.exit(1)
+        if "--milestone" in args and "--unmilestone" in args:
+            print("Signum: --milestone and --unmilestone are mutually exclusive", file=sys.stderr)
+            sys.exit(1)
+        if fields.get("milestoneId"):
+            fields["milestoneId"] = _resolve_milestone_for_item(positional[0], fields["milestoneId"])
         if "--clear-deployment" in args and ("--deployed-stage" in args or "--deployed-url" in args):
             print("Signum: --clear-deployment and --deployed-stage/--deployed-url are mutually exclusive", file=sys.stderr)
             sys.exit(1)

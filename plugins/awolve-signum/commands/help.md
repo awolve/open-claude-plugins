@@ -51,12 +51,21 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:backlog` | List backlog items for a project (filterable by assignee and tag) |
 | `/awolve-signum:backlog-add` | Add a new idea or feature request to the backlog |
 | `/awolve-signum:view-backlog` | Show full details of a single backlog item |
-| `/awolve-signum:backlog-update` | Update an item's title, description, priority, status, assignee, tags, feature link, or deployment info |
+| `/awolve-signum:backlog-update` | Update an item's title, description, priority, status, assignee, tags, feature link, deadline, or deployment info |
 | `/awolve-signum:backlog-set-parent` | Make an item a sub-item of a top-level item, or clear its parent |
 | `/awolve-signum:epics` | List a project's epics (E1, E2, …) with status, owner, counts and due date |
 | `/awolve-signum:epic-create` | Create an epic |
 | `/awolve-signum:epic-set` | Put a feature or an item under an epic (or none) |
 | `/awolve-signum:epic-promote` | Turn an item with sub-items into an epic (shows the plan first) |
+| `/awolve-signum:phase` | Show the current phase(s); `--all` lists every phase |
+| `/awolve-signum:phase-add` | Add a phase (name, dates, optional colour; phases may overlap) |
+| `/awolve-signum:phase-update` | Change a phase's name, dates or colour |
+| `/awolve-signum:phase-delete` | Delete a phase |
+| `/awolve-signum:milestones` | List deadlines and dates with progress and overdue |
+| `/awolve-signum:milestone-create` | Create a deadline (holds items) or a date (holds none) |
+| `/awolve-signum:milestone-update` | Change a milestone's name, date, kind or description |
+| `/awolve-signum:milestone-delete` | Delete a milestone; a deadline's items go back to Unplanned |
+| `/awolve-signum:milestone-add` | Put items in a deadline: single items, or an epic's or a feature's open items |
 | `/awolve-signum:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-signum:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-signum:backlog-delete` | Soft-delete a backlog item (cascades to children) |

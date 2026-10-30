@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.62.0 — 2026-10-30 — Björn Allvin
+
+- **Phases and milestones from the command line**, for services with a project plan. `phase` shows the current phase(s) and `--all` every phase; `phase-add`, `phase-update` and `phase-delete` manage them. A phase is a name and dates (optionally a colour); a project has none until one is added, and phases may overlap. `milestones` lists deadlines and dates with progress and overdue; `milestone-create`, `milestone-update` and `milestone-delete` manage them, and `milestone-add` puts single items, or an epic's or a feature's open items, in a deadline. Phases and milestones are named by name or id. Against a service without them, the commands say so.
+- **`backlog-update --milestone <deadline>` and `--unmilestone`** put an item in a deadline or take it out again. Only the deadline changes.
+
 ## 0.61.0 — 2026-10-29 — Björn Allvin
 
 - **A pushed spec no longer gets rewritten by the next teammate's session.** Push wrote only `spec_version` and `last_synced_hash` back into the file; `feature_status`, `doc_status` and `source` were left for pull to add. So the first teammate to start a session after a push rewrote the frontmatter, and a synced folder (OneDrive, SharePoint) showed them as the last editor of a document they never opened. Push now reads those fields from the project manifest and writes them too, so pull on other machines finds nothing to change. If the manifest can't be read, the push still succeeds and the next pull fills the fields in, as before. A status changed in the portal is still written by whichever machine pulls first.
