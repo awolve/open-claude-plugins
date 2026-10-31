@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.63.0 — 2026-10-31 — Björn Allvin
+
+- **Your own order of work from the command line**, for services with personal work order. `my-work` lists a person's open bugs and items from every project in their own order, the first being their Now; `--person EMAIL` shows someone else's, `--json` the service's answer. `order-move <project> '#N' --after <project>/#M` (or `--top`) moves one item and saves the whole list as it then looks. Against a service without it, the commands say so.
+
 ## 0.62.0 — 2026-10-30 — Björn Allvin
 
 - **Phases and milestones from the command line**, for services with a project plan. `phase` shows the current phase(s) and `--all` every phase; `phase-add`, `phase-update` and `phase-delete` manage them. A phase is a name and dates (optionally a colour); a project has none until one is added, and phases may overlap. `milestones` lists deadlines and dates with progress and overdue; `milestone-create`, `milestone-update` and `milestone-delete` manage them, and `milestone-add` puts single items, or an epic's or a feature's open items, in a deadline. Phases and milestones are named by name or id. Against a service without them, the commands say so.

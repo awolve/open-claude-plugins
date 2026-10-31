@@ -102,6 +102,8 @@ Run `/awolve-signum:help` for the full list, or see below:
 | `/awolve-signum:bugs` | List open bugs |
 | `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
+| `/awolve-signum:my-work` | Your own order of work across projects (or a person's); the first is the Now |
+| `/awolve-signum:order-move` | Move one item in that order, after another item or to the top |
 | `/awolve-signum:bug` | Report a new bug |
 | `/awolve-signum:edit-backlog-comment` | Edit your own comment on a backlog item |
 | `/awolve-signum:edit-bug-comment` | Edit your own comment on a bug |

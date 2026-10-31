@@ -77,6 +77,8 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:bugs` | List open bugs (filterable by assignee and tag) |
 | `/awolve-spec:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
+| `/awolve-spec:my-work` | Your own order of work across projects (or a person's); the first is the Now |
+| `/awolve-spec:order-move` | Move one item in that order, after another item or to the top |
 | `/awolve-spec:bug` | Report a new bug |
 | `/awolve-spec:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
 | `/awolve-spec:update-bug` | Edit a bug's title, description, severity, assignee, tags, deployment info, or epic |

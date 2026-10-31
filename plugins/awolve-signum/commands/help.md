@@ -77,6 +77,8 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:bugs` | List open bugs (filterable by assignee and tag) |
 | `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
+| `/awolve-signum:my-work` | Your own order of work across projects (or a person's); the first is the Now |
+| `/awolve-signum:order-move` | Move one item in that order, after another item or to the top |
 | `/awolve-signum:bug` | Report a new bug |
 | `/awolve-signum:view-bug` | Show full details of a single bug (`--images` saves its screenshots) |
 | `/awolve-signum:update-bug` | Edit a bug's title, description, severity, assignee, tags, deployment info, or epic |

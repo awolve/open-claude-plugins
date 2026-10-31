@@ -128,6 +128,10 @@ Usage:
                                          (the daily notification mail's list; default window: since 07:00 on the previous weekday)
     specs-cli.py my-weekly [--json]    — Everything open assigned to you, across every project you can open
                                          (the weekly mail "My current things in Signum")
+    specs-cli.py my-work [--person EMAIL] [--json]
+                                       — Your own order across projects (or another person's); the first is the Now
+    specs-cli.py order-move <project-id> '#N' (--after <project>/#M | --top) [--person EMAIL]
+                                       — Move one item in your (or a person's) order
     specs-cli.py bugs [project-id] [--source widget] [--assignee EMAIL|--unassigned] [--tag TAG ...] [--untagged]
                                        — List open bugs for a project (or all configured projects);
                                          --tag is repeatable and OR-ed
@@ -3238,6 +3242,109 @@ def my_weekly(as_json=False):
             parts.append("OVERDUE")
         return " · ".join(p for p in parts if p)
     _print_by_project(items, detail)
+
+
+def _work_order(method, path, params=None, body=None):
+    """Call the personal work order routes (spec-service spec 053).
+
+    One person's open bugs and items from every project, in their own order;
+    the first is their Now. Returns (status_code, parsed_body).
+    """
+    import urllib.parse
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-signum:login first", file=sys.stderr)
+        sys.exit(1)
+    query = f"?{urllib.parse.urlencode(params)}" if params else ""
+    url = f"{cfg['service_url']}{path}{query}"
+    try:
+        # A dict body is sent as JSON by api_request.
+        status_code, raw = api_request(url, method=method, headers=headers, data=body)
+    except ConnectionError as e:
+        print(f"Signum: failed to reach the work order — {e}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        parsed = json.loads(raw) if raw else {}
+    except ValueError:
+        parsed = {}
+    if status_code == 404 and not parsed.get("error"):
+        print("Signum: this Signum instance has no personal work order yet (needs spec-service with spec 053)", file=sys.stderr)
+        sys.exit(1)
+    return status_code, parsed
+
+
+def _order_ref(item):
+    return f"{item.get('projectId')}/#{item.get('number')}"
+
+
+def _print_work_order(data):
+    person = data.get("person") or {}
+    items = data.get("items") or []
+    print(f"Signum: {person.get('name') or person.get('email')} — {len(items)} open item(s), in their order")
+    if not items:
+        print("  (no open items)")
+        return
+    for i in items:
+        label = "NOW" if i.get("now") else f"{i.get('rank')}."
+        kind = "bug" if i.get("kind") == "bug" else (i.get("kind") or "item")
+        date = i.get("date") or ""
+        if date and i.get("dateSource") == "milestone":
+            date += " (milestone)"
+        warn = "  ! due before an item above it" if i.get("warning") else ""
+        print(f"  {label:>4} {_order_ref(i):<24} {kind:<14} {i.get('status') or '':<16} {date:<22} {i.get('title')}{warn}")
+
+
+def my_work(person=None, as_json=False):
+    """A person's own order across every project (spec-service spec 053): the first is their Now."""
+    status_code, data = _work_order("GET", "/api/portal/work-order", {"person": person or "me"})
+    if status_code != 200:
+        print(f"Signum: failed to fetch the work order — {data.get('error') or f'HTTP {status_code}'}", file=sys.stderr)
+        sys.exit(1)
+    if as_json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    _print_work_order(data)
+
+
+def order_move(project_id, ref, after=None, top=False, person=None):
+    """Move one item in a person's order: right after another item, or to the top.
+
+    Items are named `<project>/#N` (or `#N` in `project_id`), looked up in the
+    person's own order, since only items in it can be moved within it.
+    """
+    who = person or "me"
+    status_code, data = _work_order("GET", "/api/portal/work-order", {"person": who})
+    if status_code != 200:
+        print(f"Signum: failed to fetch the work order — {data.get('error') or f'HTTP {status_code}'}", file=sys.stderr)
+        sys.exit(1)
+    items = data.get("items") or []
+
+    def find(text, default_project):
+        project, _, number = text.rpartition("/")
+        project = project or default_project
+        number = number.lstrip("#")
+        for i in items:
+            if i.get("projectId") == project and str(i.get("number")) == number:
+                return i
+        print(f"Signum: {project}/#{number} is not in this person's open order", file=sys.stderr)
+        sys.exit(1)
+
+    item = find(ref, project_id)
+    after_id = None if top else find(after, project_id)["id"]
+    status_code, data = _work_order("PUT", "/api/portal/work-order/move", body={"person": who, "itemId": item["id"], "afterId": after_id})
+    if status_code == 409:
+        print("Signum: the order changed meanwhile — run my-work and try again", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"Signum: failed to move it — {data.get('error') or f'HTTP {status_code}'}", file=sys.stderr)
+        sys.exit(1)
+    moved = next((i for i in data.get("items") or [] if i.get("id") == item["id"]), None)
+    where = "the top (Now)" if moved and moved.get("now") else f"place {moved.get('rank')}" if moved else "its new place"
+    print(f"Signum: moved {_order_ref(item)} to {where}")
 
 
 def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=False,
@@ -9050,6 +9157,24 @@ def main():
         my_daily(since=since, kind=kind, as_json="--json" in args)
     elif cmd == "my-weekly":
         my_weekly(as_json="--json" in args)
+    elif cmd == "my-work":
+        person = None
+        for i, a in enumerate(args):
+            if a == "--person" and i + 1 < len(args): person = args[i + 1]
+        my_work(person=person, as_json="--json" in args)
+    elif cmd == "order-move":
+        if len(args) < 3:
+            print("Usage: specs-cli.py order-move <project-id> '#N' (--after <project>/#M | --top) [--person EMAIL]", file=sys.stderr)
+            sys.exit(1)
+        after = person = None
+        for i, a in enumerate(args):
+            if a == "--after" and i + 1 < len(args): after = args[i + 1]
+            if a == "--person" and i + 1 < len(args): person = args[i + 1]
+        top = "--top" in args
+        if (after is None) == (not top):
+            print("Signum: give exactly one of --after <project>/#M or --top", file=sys.stderr)
+            sys.exit(1)
+        order_move(args[1], args[2], after=after, top=top, person=person)
     elif cmd == "bugs":
         proj = args[1] if len(args) > 1 and not args[1].startswith("-") else None
         VALUE_FLAGS_BUGS = {"--assignee", "--tag", "--status", "--source"}
