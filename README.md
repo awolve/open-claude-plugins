@@ -99,6 +99,9 @@ Run `/awolve-signum:help` for the full list, or see below:
 | `/awolve-signum:phase` | Show the current phase(s); `phase-add`, `phase-update`, `phase-delete` manage them |
 | `/awolve-signum:milestones` | List deadlines and dates; `milestone-create`, `-update`, `-delete` manage them |
 | `/awolve-signum:milestone-add` | Put items in a deadline (single items, or an epic's or feature's open items) |
+| `/awolve-signum:programmes` | List programmes, projects that hold member projects; `programme <id>` shows where one stands |
+| `/awolve-signum:project-kind` | Make a project a programme; `programme-add` / `programme-remove` manage its members |
+| `/awolve-signum:milestone-link` | Link a programme deadline to a member deadline; `milestone-unlink` removes it |
 | `/awolve-signum:bugs` | List open bugs |
 | `/awolve-signum:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-signum:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |

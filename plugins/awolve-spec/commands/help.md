@@ -66,6 +66,11 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:milestone-update` | Change a milestone's name, date, kind or description |
 | `/awolve-spec:milestone-delete` | Delete a milestone; a deadline's items go back to Unplanned |
 | `/awolve-spec:milestone-add` | Put items in a deadline: single items, or an epic's or a feature's open items |
+| `/awolve-spec:programmes` | List programmes: projects that hold member projects (internal users only) |
+| `/awolve-spec:programme` | Where a programme stands: members, current phases, milestones with linked progress |
+| `/awolve-spec:project-kind` | Make a project a programme, or a programme a project |
+| `/awolve-spec:programme-add` | Add a member project to a programme; `programme-remove` takes one out |
+| `/awolve-spec:milestone-link` | Link a programme deadline to a member deadline; `milestone-unlink` removes it |
 | `/awolve-spec:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-spec:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-spec:backlog-delete` | Soft-delete a backlog item (cascades to children) |

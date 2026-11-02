@@ -66,6 +66,11 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:milestone-update` | Change a milestone's name, date, kind or description |
 | `/awolve-signum:milestone-delete` | Delete a milestone; a deadline's items go back to Unplanned |
 | `/awolve-signum:milestone-add` | Put items in a deadline: single items, or an epic's or a feature's open items |
+| `/awolve-signum:programmes` | List programmes: projects that hold member projects (internal users only) |
+| `/awolve-signum:programme` | Where a programme stands: members, current phases, milestones with linked progress |
+| `/awolve-signum:project-kind` | Make a project a programme, or a programme a project |
+| `/awolve-signum:programme-add` | Add a member project to a programme; `programme-remove` takes one out |
+| `/awolve-signum:milestone-link` | Link a programme deadline to a member deadline; `milestone-unlink` removes it |
 | `/awolve-signum:backlog-depend` | Make an item wait for another (sets it Blocked) |
 | `/awolve-signum:backlog-undepend` | Remove a dependency (restores the previous status) |
 | `/awolve-signum:backlog-delete` | Soft-delete a backlog item (cascades to children) |

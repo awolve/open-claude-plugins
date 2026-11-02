@@ -95,6 +95,16 @@ Usage:
                                        — Deleting a deadline puts its items back in Unplanned
     specs-cli.py milestone-add <project-id> <deadline> (--items 12,15 | --epic E3 | --feature <name>)
                                        — Put items in a deadline; an epic or feature adds its open items
+    specs-cli.py programmes [--json]   — Programmes: projects that hold member projects (internal users only)
+    specs-cli.py programme <programme-id> [--json]
+                                       — Members, current phases, milestones with progress and linked overdue
+    specs-cli.py project-kind <project-id> programme|project
+    specs-cli.py programme-add <programme-id> <project-id>
+    specs-cli.py programme-remove <programme-id> <project-id> [--yes]
+                                       — Says first how many deadline links go with it; --yes removes
+    specs-cli.py milestone-link <programme-id> <deadline> <project-id>:<deadline>
+    specs-cli.py milestone-unlink <programme-id> <deadline> <project-id>:<deadline>
+                                       — A programme deadline delivered by a member deadline
     specs-cli.py backlog-update <project-id> <item-id-or-#N> [--title T] [--description T] [--priority P] [--status S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
@@ -5993,6 +6003,161 @@ def _parse_plan_args(cmd, args, value_flags, bare_flags=None):
     return positional, fields
 
 
+# ── Programmes (at Awolve: Signum spec 055) ────────────────────────────────
+# A programme is a project of kind `programme` that also holds member
+# projects, with deadlines linked to the member deadlines that deliver them.
+# Phases, milestones and items on a programme use the ordinary commands with
+# the programme's project id. Programmes are internal-only.
+
+PROGRAMME_ERROR_HINTS = {
+    "not_a_programme": "that project is not a programme (make it one with `project-kind <project> programme`)",
+    "member_is_programme": "a programme can't be a member of another programme",
+    "programme_has_members": "the programme still has members; remove them before making it a project",
+    "programme_has_external_access": "programmes are internal-only; remove the external users' access first",
+    "project_is_member": "this project is a member of a programme; remove it there first",
+    "programme_external_forbidden": "programmes are internal-only",
+    "not_a_programme_deadline": "only a programme's deadline can be linked to member deadlines",
+    "not_a_member_deadline": "that deadline is not in one of the programme's member projects",
+    "not_a_member": "that project is not a member of the programme",
+    "project_not_found": "no such project, or it is not visible to you",
+}
+PLAN_ERROR_HINTS.update(PROGRAMME_ERROR_HINTS)
+
+
+def list_programmes(as_json=False):
+    """`programmes`: every programme you can see, with its member count."""
+    headers, service_url = _epic_cli_context(None)
+    rows = _plan_call(headers, f"{service_url}/api/portal/projects?kind=programme", what="reading programmes")
+    if as_json:
+        print(json.dumps(rows, indent=2, ensure_ascii=False))
+        return
+    print(f"Signum: {len(rows)} programme(s)")
+    print()
+    if not rows:
+        print("  (none)")
+    for p in rows:
+        n = p.get("memberCount", 0)
+        client = f"  ({p['clientName']})" if p.get("clientName") else ""
+        print(f"  {p['id']:<36} {p['name']}{client} — {n} member{'s' if n != 1 else ''}")
+
+
+def _programme_milestone_status(m):
+    """A programme deadline's status: progress counts its linked member deadlines too."""
+    if m.get("kind") == "deadline" and not (m.get("progress") or {}).get("total") and not m.get("linkCount"):
+        return "not broken down yet"
+    return _milestone_status(m)
+
+
+def show_programme(programme_id, as_json=False):
+    """`programme <id>`: members, current phases, and milestones with progress and linked overdue."""
+    headers, service_url = _epic_cli_context(programme_id)
+    plan = _plan_call(headers, _project_url(service_url, programme_id, "plan?members=1"), what="reading the programme")
+    if as_json:
+        print(json.dumps(plan, indent=2, ensure_ascii=False))
+        return
+    if plan.get("kind") != "programme":
+        print(f"Signum: '{programme_id}' is a project, not a programme (see `milestones {programme_id}`)", file=sys.stderr)
+        sys.exit(1)
+    now = plan.get("currentPhases") or []
+    print(f"Signum: programme '{programme_id}' — now: {', '.join(p['name'] for p in now) or 'no current phase'}")
+    print()
+    print("  Milestones")
+    if not plan.get("milestones"):
+        print("    (none)")
+    for m in plan.get("milestones") or []:
+        links = f"  · {m['linkCount']} linked" if m.get("linkCount") else ""
+        print(f"    {m['date']}  {m['kind']:<8}  {m['name']:<32} {_programme_milestone_status(m)}{links}")
+        for o in m.get("linkedOverdue") or []:
+            print(f"      ! {o['projectName']}: a linked deadline is overdue")
+        for late in m.get("linkedLate") or []:
+            print(f"      ! {late['projectName']}: a linked deadline is {late['days']} day(s) later ({late['date']})")
+    print()
+    members = plan.get("members") or []
+    print(f"  Members ({len(members)})")
+    if not members:
+        print("    (none yet — add one with `programme-add`)")
+    for mem in members:
+        p = mem.get("plan")
+        if not p:
+            print(f"    {mem['project']['name']:<36} could not load its plan")
+            continue
+        phases = ", ".join(x["name"] for x in p.get("currentPhases") or []) or "no current phase"
+        upcoming = [x for x in p.get("milestones") or [] if x.get("date", "") >= plan.get("today", "")]
+        nxt = f"; next: {upcoming[0]['name']} {upcoming[0]['date']}" if upcoming else ""
+        overdue = sum(1 for x in p.get("milestones") or [] if x.get("overdue"))
+        late = f"; {overdue} overdue" if overdue else ""
+        print(f"    {mem['project']['name']:<36} now: {phases}{nxt}{late}")
+    print()
+    print(f"  portal: {service_url}/portal/{programme_id}/plan")
+
+
+def set_project_kind(project_id, kind):
+    """`project-kind`: make a project a programme, or a programme a project."""
+    if kind not in ("project", "programme"):
+        print(f"Signum: the kind must be project or programme; got '{kind}'", file=sys.stderr)
+        sys.exit(1)
+    headers, service_url = _epic_cli_context(project_id)
+    _plan_call(headers, f"{service_url}/api/projects/{urllib.parse.quote(project_id, safe='')}", "PATCH", {"kind": kind}, what="changing the kind")
+    print(f"Signum: '{project_id}' is now a {kind}")
+
+
+def add_programme_member(programme_id, project_id):
+    """`programme-add`: put a project in a programme. Only the membership changes."""
+    headers, service_url = _epic_cli_context(programme_id)
+    out = _plan_call(headers, _project_url(service_url, programme_id, "members"), "POST", {"projectId": project_id}, what="adding the member")
+    if out.get("added"):
+        print(f"Signum: added '{project_id}' to programme '{programme_id}'")
+    else:
+        print(f"Signum: '{project_id}' was already a member of '{programme_id}'")
+    print(f"  members: {', '.join(m['id'] for m in out.get('members') or [])}")
+
+
+def remove_programme_member(programme_id, project_id, confirmed=False):
+    """`programme-remove`: take a project out. Says first how many deadline links go with it; --yes removes."""
+    headers, service_url = _epic_cli_context(programme_id)
+    url = _project_url(service_url, programme_id, f"members/{urllib.parse.quote(project_id, safe='')}")
+    if not confirmed:
+        dry = _plan_call(headers, url + "?dryRun=1", "DELETE", what="checking the member")
+        n = dry.get("linksRemoved", 0)
+        print(f"Signum: removing '{project_id}' from '{programme_id}' also removes {n} link(s) from programme deadlines to its deadlines.")
+        print("  Its own plan is not changed. Run again with --yes to remove it.")
+        return
+    out = _plan_call(headers, url, "DELETE", what="removing the member")
+    if not out.get("removed"):
+        print(f"Signum: '{project_id}' was not a member of '{programme_id}'")
+        return
+    n = out.get("linksRemoved", 0)
+    print(f"Signum: removed '{project_id}' from '{programme_id}'" + (f"; {n} deadline link(s) removed" if n else ""))
+
+
+def _member_deadline_ref(ref):
+    """`<project>:<milestone>` → (project, milestone)."""
+    project, sep, milestone = str(ref).partition(":")
+    if not sep or not project or not milestone:
+        print("Signum: name the member deadline as <project-id>:<milestone-name-or-id>", file=sys.stderr)
+        sys.exit(1)
+    return project, milestone
+
+
+def link_milestones(programme_id, programme_ref, member_ref, unlink=False):
+    """`milestone-link` / `milestone-unlink`: a programme deadline and a member deadline that delivers it."""
+    member_project, member_milestone = _member_deadline_ref(member_ref)
+    headers, service_url = _epic_cli_context(programme_id)
+    pm = _find_by_name_or_id(_fetch_milestones(headers, service_url, programme_id), programme_ref, "milestone", programme_id)
+    mm = _find_by_name_or_id(_fetch_milestones(headers, service_url, member_project), member_milestone, "milestone", member_project)
+    base = f"{service_url}/api/portal/milestones/{pm['id']}/links"
+    if unlink:
+        out = _plan_call(headers, f"{base}/{mm['id']}", "DELETE", what="unlinking")
+        verb = "unlinked" if out.get("unlinked") else "was not linked to"
+        print(f"Signum: '{pm['name']}' {verb} {member_project} '{mm['name']}'")
+        return
+    out = _plan_call(headers, base, "POST", {"milestoneId": mm["id"]}, what="linking")
+    verb = "is now delivered by" if out.get("linked") else "was already linked to"
+    print(f"Signum: '{pm['name']}' {verb} {member_project} '{mm['name']}' ({mm.get('date')})")
+    if mm.get("date", "") > pm.get("date", ""):
+        print(f"  note: {member_project}'s deadline is after the programme deadline ({pm.get('date')}); neither date was changed")
+
+
 def _resolve_milestone_for_item(project_id, ref):
     """`--milestone <id|name>` on backlog-update: the deadline's id, or exit."""
     headers, service_url = _epic_cli_context(project_id)
@@ -9658,6 +9823,38 @@ def main():
             print("Usage: specs-cli.py milestone-add <project-id> <deadline-name-or-id> (--items 12,15 | --epic E3 | --feature <name>)", file=sys.stderr)
             sys.exit(1)
         add_to_milestone(positional[0], positional[1], items=f.get("items"), epic=f.get("epic"), feature=f.get("feature"))
+    elif cmd == "programmes":
+        list_programmes(as_json="--json" in args)
+    elif cmd == "programme":
+        positional = [a for a in args[1:] if not a.startswith("--")]
+        if not positional:
+            print("Usage: specs-cli.py programme <programme-id> [--json]", file=sys.stderr)
+            sys.exit(1)
+        show_programme(positional[0], as_json="--json" in args)
+    elif cmd == "project-kind":
+        positional, _ = _parse_plan_args(cmd, args, {})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py project-kind <project-id> programme|project", file=sys.stderr)
+            sys.exit(1)
+        set_project_kind(positional[0], positional[1])
+    elif cmd == "programme-add":
+        positional, _ = _parse_plan_args(cmd, args, {})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py programme-add <programme-id> <project-id>", file=sys.stderr)
+            sys.exit(1)
+        add_programme_member(positional[0], positional[1])
+    elif cmd == "programme-remove":
+        positional, f = _parse_plan_args(cmd, args, {}, {"--yes": ("yes", True)})
+        if len(positional) < 2:
+            print("Usage: specs-cli.py programme-remove <programme-id> <project-id> [--yes]", file=sys.stderr)
+            sys.exit(1)
+        remove_programme_member(positional[0], positional[1], confirmed=bool(f.get("yes")))
+    elif cmd in ("milestone-link", "milestone-unlink"):
+        positional, _ = _parse_plan_args(cmd, args, {})
+        if len(positional) < 3:
+            print(f"Usage: specs-cli.py {cmd} <programme-id> <programme-deadline> <project-id>:<deadline>", file=sys.stderr)
+            sys.exit(1)
+        link_milestones(positional[0], positional[1], positional[2], unlink=cmd == "milestone-unlink")
     elif cmd == "epics":
         positional = [a for a in args[1:] if not a.startswith("--")]
         if not positional:
