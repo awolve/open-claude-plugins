@@ -93,8 +93,9 @@ Usage:
     specs-cli.py milestone-update <project-id> <milestone> [--name N] [--date D] [--kind K] [--description T | --clear-description]
     specs-cli.py milestone-delete <project-id> <milestone>
                                        — Deleting a deadline puts its items back in Unplanned
-    specs-cli.py milestone-add <project-id> <deadline> (--items 12,15 | --epic E3 | --feature <name>)
-                                       — Put items in a deadline; an epic or feature adds its open items
+    specs-cli.py milestone-add <project-id> <deadline> (--epic E3 | --feature <name> | --items 12,15 | --epic-items E3 | --feature-items <name>)
+                                       — Plan an epic or a feature itself into a deadline (its items follow),
+                                         or put items in one; --epic-items/--feature-items add the open items one by one
     specs-cli.py programmes [--json]   — Programmes: projects that hold member projects (internal users only)
     specs-cli.py programme <programme-id> [--json]
                                        — Members, current phases, milestones with progress and linked overdue
@@ -5761,18 +5762,23 @@ def _plan_call(headers, url, method="GET", payload=None, what="request"):
     except ConnectionError as e:
         print(f"Signum: {what} failed — {e}", file=sys.stderr)
         sys.exit(1)
+    if status_code not in (200, 201):
+        _plan_fail(status_code, body, what)
+    return json.loads(body) if body else {}
+
+
+def _plan_fail(status_code, body, what):
+    """Exit with why a plan call was refused."""
     if _is_route_missing(status_code, body):
         print(f"Signum: {NO_PLAN_YET}", file=sys.stderr)
         sys.exit(1)
-    if status_code not in (200, 201):
-        code, _detail = _error_code(body)
-        hint = PLAN_ERROR_HINTS.get(code) if isinstance(code, str) else None
-        if hint:
-            print(f"Signum: refused — {hint} ({code})", file=sys.stderr)
-        else:
-            print(f"Signum: {what} failed (HTTP {status_code}): {code}", file=sys.stderr)
-        sys.exit(1)
-    return json.loads(body) if body else {}
+    code, _detail = _error_code(body)
+    hint = PLAN_ERROR_HINTS.get(code) if isinstance(code, str) else None
+    if hint:
+        print(f"Signum: refused — {hint} ({code})", file=sys.stderr)
+    else:
+        print(f"Signum: {what} failed (HTTP {status_code}): {code}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _check_date(flag, value):
@@ -5891,8 +5897,11 @@ def _milestone_status(m):
         return "passed" if m.get("state") == "completed" else "upcoming"
     progress = m.get("progress") or {}
     if not progress.get("total"):
-        return "no items yet"
-    return f"{progress.get('done', 0)}/{progress['total']} done"
+        return "nothing planned yet" if progress.get("level") else "no items yet"
+    # Newer services count the lowest level a deadline holds: items, features or epics.
+    level = progress.get("level")
+    noun = {"features": " features", "epics": " epics", "mixed": " pieces of work", "items": " items"}.get(level, "")
+    return f"{progress.get('done', 0)}/{progress['total']}{noun} done"
 
 
 def list_milestones(project_id, as_json=False):
@@ -5949,14 +5958,41 @@ def delete_milestone(project_id, milestone_ref):
     print(f"Signum: deleted {m['kind']} '{m['name']}'{tail}")
 
 
-def add_to_milestone(project_id, milestone_ref, items=None, epic=None, feature=None):
-    """`milestone-add`: put items in a deadline — single items, or an epic's or a feature's open items."""
-    given = [x for x in (items, epic, feature) if x]
+def add_to_milestone(project_id, milestone_ref, items=None, epic=None, feature=None, epic_items=None, feature_items=None):
+    """`milestone-add`: plan an epic or a feature itself into a deadline (its
+    items follow it), or put items in one — single items, or an epic's or a
+    feature's open items one by one (--epic-items / --feature-items)."""
+    given = [x for x in (items, epic, feature, epic_items, feature_items) if x]
     if len(given) != 1:
-        print("Signum: give exactly one of --items, --epic or --feature", file=sys.stderr)
+        print("Signum: give exactly one of --items, --epic, --feature, --epic-items or --feature-items", file=sys.stderr)
         sys.exit(1)
     headers, service_url = _epic_cli_context(project_id)
     m = _find_by_name_or_id(_fetch_milestones(headers, service_url, project_id), milestone_ref, "milestone", project_id)
+    if epic or feature:
+        payload = {"epicIds": [epic]} if epic else {"featureIds": [feature]}
+        url = f"{service_url}/api/portal/milestones/{m['id']}/items"
+        try:
+            status_code, body = api_request(url, method="POST", data=payload, headers={**headers, "Content-Type": "application/json"})
+        except ConnectionError as e:
+            print(f"Signum: planning failed — {e}", file=sys.stderr)
+            sys.exit(1)
+        # A service from before planning at any level answers one_of_required.
+        if status_code == 400 and _error_code(body)[0] == "one_of_required":
+            flag = "--epic-items" if epic else "--feature-items"
+            print(f"Signum: this service can't plan an epic or a feature itself yet; use {flag} to add its open items one by one", file=sys.stderr)
+            sys.exit(1)
+        if status_code not in (200, 201):
+            _plan_fail(status_code, body, "planning")
+        out = json.loads(body) if body else {}
+        what = f"epic {epic}" if epic else f"feature '{feature}'"
+        if out.get("unchanged") and not out.get("added"):
+            print(f"Signum: {what} is already planned into '{m['name']}'")
+            return
+        was = " (moved from another deadline)" if out.get("moved") else ""
+        n = out.get("following") or 0
+        tail = f" (its {n} item{'' if n == 1 else 's'} follow it)" if n else ""
+        print(f"Signum: planned {what} into '{m['name']}'{was}{tail}")
+        return
     if items:
         refs = []
         for raw in str(items).split(","):
@@ -5964,10 +6000,10 @@ def add_to_milestone(project_id, milestone_ref, items=None, epic=None, feature=N
             if s:
                 refs.append(int(s) if s.isdigit() else s)
         payload = {"itemIds": refs}
-    elif epic:
-        payload = {"epicId": epic}
+    elif epic_items:
+        payload = {"epicId": epic_items}
     else:
-        payload = {"featureId": feature}
+        payload = {"featureId": feature_items}
     out = _plan_call(headers, f"{service_url}/api/portal/milestones/{m['id']}/items", "POST", payload, what="adding items")
     moved = f" ({out['moved']} moved from another deadline)" if out.get("moved") else ""
     same = f"; {out['unchanged']} already in it" if out.get("unchanged") else ""
@@ -9818,11 +9854,13 @@ def main():
             sys.exit(1)
         delete_milestone(positional[0], positional[1])
     elif cmd == "milestone-add":
-        positional, f = _parse_plan_args(cmd, args, {"--items": "items", "--epic": "epic", "--feature": "feature"})
+        positional, f = _parse_plan_args(cmd, args, {"--items": "items", "--epic": "epic", "--feature": "feature",
+                                                     "--epic-items": "epic_items", "--feature-items": "feature_items"})
         if len(positional) < 2:
-            print("Usage: specs-cli.py milestone-add <project-id> <deadline-name-or-id> (--items 12,15 | --epic E3 | --feature <name>)", file=sys.stderr)
+            print("Usage: specs-cli.py milestone-add <project-id> <deadline-name-or-id> (--epic E3 | --feature <name> | --items 12,15 | --epic-items E3 | --feature-items <name>)", file=sys.stderr)
             sys.exit(1)
-        add_to_milestone(positional[0], positional[1], items=f.get("items"), epic=f.get("epic"), feature=f.get("feature"))
+        add_to_milestone(positional[0], positional[1], items=f.get("items"), epic=f.get("epic"), feature=f.get("feature"),
+                         epic_items=f.get("epic_items"), feature_items=f.get("feature_items"))
     elif cmd == "programmes":
         list_programmes(as_json="--json" in args)
     elif cmd == "programme":

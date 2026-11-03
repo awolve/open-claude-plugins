@@ -65,7 +65,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-signum:milestone-create` | Create a deadline (holds items) or a date (holds none) |
 | `/awolve-signum:milestone-update` | Change a milestone's name, date, kind or description |
 | `/awolve-signum:milestone-delete` | Delete a milestone; a deadline's items go back to Unplanned |
-| `/awolve-signum:milestone-add` | Put items in a deadline: single items, or an epic's or a feature's open items |
+| `/awolve-signum:milestone-add` | Plan an epic or a feature into a deadline (its items follow), or put items in one |
 | `/awolve-signum:programmes` | List programmes: projects that hold member projects (internal users only) |
 | `/awolve-signum:programme` | Where a programme stands: members, current phases, milestones with linked progress |
 | `/awolve-signum:project-kind` | Make a project a programme, or a programme a project |

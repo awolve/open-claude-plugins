@@ -15,6 +15,6 @@ Determine the project. If the user specifies one, use it; if exactly one project
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py milestones <project-id> [--json]
 ```
 
-Each row shows the date, the kind, the name, and for a deadline its progress (`1/5 done`), `no items yet`, or `overdue` when its date has passed with items open; for a date, `upcoming` or `passed`. `--json` prints the service's milestones with progress and state.
+Each row shows the date, the kind, the name, and for a deadline its progress (`1/5 items done`, or `0/3 features done` when it holds no items yet: newer services count the lowest level a deadline holds), `nothing planned yet`, or `overdue` when its date has passed with items open; for a date, `upcoming` or `passed`. `--json` prints the service's milestones with progress and state.
 
 Most items are in no deadline. That is normal (they are "Unplanned"), not a problem to report.

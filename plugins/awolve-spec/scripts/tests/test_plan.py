@@ -144,10 +144,11 @@ class MilestoneTest(unittest.TestCase):
         self.assertEqual(calls[1][2], {"itemIds": [12, 15]})
         self.assertIn("added 2 item(s) to 'Pilot fixes' (1 moved from another deadline); 1 already in it", out.getvalue())
 
-    def test_add_an_epic_sends_only_the_epic(self):
+    def test_add_an_epics_items_sends_only_the_epic(self):
+        # Spec 056: --epic-items keeps what --epic did before (test_plan_levels.py covers --epic).
         with _env({("GET", "/projects/proj/milestones"): _ok([FIXES]),
                    ("POST", "/milestones/m1/items"): _ok({"added": 3, "moved": 0, "unchanged": 0})}) as (_, _e, calls):
-            specs_cli.add_to_milestone("proj", "m1", epic="E3")
+            specs_cli.add_to_milestone("proj", "m1", epic_items="E3")
         self.assertEqual(calls[1][2], {"epicId": "E3"})
 
     def test_add_needs_exactly_one_source(self):
