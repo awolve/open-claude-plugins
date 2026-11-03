@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.65.0 — 2026-11-03 — Björn Allvin
+
+- **`milestone-add --epic` and `--feature` plan the epic or feature itself**, for services that plan at any level. The epic or feature goes into the deadline, and its items follow it unless they have a deadline of their own, including items added later. This works before any items exist. The CLI says how many items follow it.
+- **`--epic-items` and `--feature-items`** keep what `--epic` and `--feature` did before: add each open item one by one. Against a service that can't plan an epic or a feature itself yet, `--epic` and `--feature` say so and name these flags.
+- **`milestones` names what a deadline's progress counts:** `1/4 items done`, `0/3 features done`, or `pieces of work` for a programme deadline whose members plan at different levels. Older services show progress as before.
+
 ## 0.64.0 — 2026-11-03 — Björn Allvin
 
 - **Programmes from the command line**, for services with programmes. A programme is a project that groups other projects and plans across them. `programmes` lists them with their member counts; `programme <id>` shows one with its members. `project-kind <project> project|programme` changes what a project is. `programme-add` and `programme-remove` manage members; remove shows what it would drop and only acts with `--yes`. `milestone-link` and `milestone-unlink` tie a programme deadline to a member's deadline, so its progress counts the member's work. Against a service without programmes, the commands say so.
