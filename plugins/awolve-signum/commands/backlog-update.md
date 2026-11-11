@@ -15,7 +15,7 @@ Parse the user's argument. Expected forms:
 
 Item references accept UUIDs or `#N` numeric form (with or without `#`).
 
-At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|planned|in_progress|ready_for_testing|completed|archived), `--assignee <email>`, `--unassign`, or one of the tag flags below.
+At least one field flag is required: `--title`, `--description`, `--priority` (low|medium|high), `--status` (idea|acknowledged|planned|in_progress|ready_for_testing|completed|archived; `acknowledged` is for internal users only), `--assignee <email>`, `--unassign`, or one of the tag flags below.
 
 **Tags:** `--tags a,b` replaces the whole set; `--add-tag T` and `--remove-tag T` are repeatable deltas applied against whatever the item wears right now; `--clear-tags` removes them all. `--tags` cannot be combined with `--add-tag`/`--remove-tag` — one replaces, the others adjust. Tags must already exist on the project: an unknown name fails with `tag_not_found` and a list of close matches, because coining a tag is a separate, permission-gated act (`/awolve-signum:tag-create`).
 

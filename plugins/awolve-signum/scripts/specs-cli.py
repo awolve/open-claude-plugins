@@ -155,7 +155,7 @@ Usage:
                                          fixed and done, and what became of each
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed,
-                                         or a shared status: new|planned|in_progress|blocked|ready_for_testing|completed|archived)
+                                         or a shared status: new|acknowledged|planned|in_progress|blocked|ready_for_testing|completed|archived)
     specs-cli.py update-bug <project-id> <bug-number> [--title T] [--description T] [--severity S] [--assignee EMAIL|--unassign]
                                        [--tags a,b | --add-tag T | --remove-tag T | --clear-tags]
                                        [--deployed-stage preview|staging|production --deployed-url U | --clear-deployment]
@@ -2450,7 +2450,9 @@ BACKLOG_STATUSES = ["idea", "planned", "blocked", "in_progress", "ready_for_test
 # accepts them on every endpoint beside the old values, which stay accepted
 # for good. The old lists above stay the old endpoints' vocabulary.
 ITEM_KINDS = ["implementation", "bug", "activity"]
-ITEM_STATES = ["new", "planned", "in_progress", "blocked", "ready_for_testing", "completed", "archived"]
+# `acknowledged` (at Awolve: Signum spec 059): received by the team, not yet
+# triaged. It has no old twin, so it needs a server that knows it.
+ITEM_STATES = ["new", "acknowledged", "planned", "in_progress", "blocked", "ready_for_testing", "completed", "archived"]
 SHARED_STATUSES = {
     "backlog": ITEM_STATES,
     "bug": ITEM_STATES,
@@ -2492,6 +2494,15 @@ def accepted_statuses(record):
 def status_to_send(record, value):
     """The value to send for `value`: its old twin when it has one, else itself."""
     return OLD_TWIN[record].get(value, value)
+
+
+def _bug_has_status(bug, value):
+    """Does a bug row match a status filter? Rows carry the old value and, on a
+    newer server, the shared `state`; a shared filter is matched on the state,
+    so `new` and `acknowledged` tell apart two bugs that both read `open`."""
+    if value in ITEM_STATES and bug.get("state"):
+        return bug["state"] == value
+    return bug.get("status") == status_to_send("bug", value)
 
 
 def needs_shared_statuses(record, value):
@@ -3416,7 +3427,7 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
             open_bugs = list(bugs)
         elif status_filter:
             # The rows carry old values; a shared one is matched by its twin.
-            open_bugs = [b for b in bugs if b.get("status") == status_to_send("bug", status_filter)]
+            open_bugs = [b for b in bugs if _bug_has_status(b, status_filter)]
         else:
             open_bugs = [b for b in bugs if b.get("status") not in ("closed", "resolved")]
         scope = "" if include_all else (status_filter or "open")
@@ -3448,6 +3459,9 @@ def list_bugs(project_id=None, assignee_filter=None, tag_filters=None, untagged=
         for bug in open_bugs:
             severity = bug.get("severity", "?")
             status = bug.get("status", "?")
+            # An old bug status has no word for acknowledged; it reads `open`.
+            if bug.get("state") == "acknowledged":
+                status = "acknowledged"
             number = bug.get("number", "?")
             title = bug.get("title", "untitled")
             reporter = bug.get("reporterName") or bug.get("reporterEmail", "?")
@@ -3713,14 +3727,17 @@ def bug_report(project_id, date_from, date_to, as_json=False):
     if report.get("incomplete"):
         print(f"  Note: history starts {report['historyStartsAt']}; bugs filed before that have no times.")
     print()
-    print(f"  New bugs: {s['newBugs']}   handled: {s['handled']}   fixed: {s['fixed']}   done: {s['done']}   still open: {s['open']}")
+    acked = f"   acknowledged: {s['acknowledged']}" if "acknowledged" in s else ""
+    print(f"  New bugs: {s['newBugs']}{acked}   handled: {s['handled']}   fixed: {s['fixed']}   done: {s['done']}   still open: {s['open']}")
     outcomes = ", ".join(f"{k} {v}" for k, v in s["outcomes"].items() if v)
     if outcomes:
         print(f"  Now: {outcomes}")
     print()
     print("  Time from filing    median     longest")
-    for step in ("handled", "fixed", "done"):
-        t = s["times"][step]
+    for step in ("acknowledged", "handled", "fixed", "done"):
+        t = s["times"].get(step)
+        if t is None:  # a server from before the acknowledged step
+            continue
         print(f"    {step:<17} {_duration(t['median']):<10} {_duration(t['max'])}")
     if len(s["bySeverity"]) > 1:
         print()
@@ -3734,7 +3751,7 @@ def bug_report(project_id, date_from, date_to, as_json=False):
     if not bugs:
         return
     print()
-    print("  #      sev       handled   fixed     done      now")
+    print("  #      sev       ack'd     handled   fixed     done      now")
     for b in bugs:
         now = b["outcome"]
         if b["outcome"] == "converted":
@@ -3743,9 +3760,14 @@ def bug_report(project_id, date_from, date_to, as_json=False):
             now = f"open ({b['state']})"
         if b.get("reopened"):
             now += ", reopened"
-        handled = _duration(b["handledAfter"]) if b["handledAfter"] is not None else (
-            f"({_duration(b['waiting']['handled'])})" if b["waiting"]["handled"] is not None else "-")
-        print(f"  #{b['number']:<5} {(b['severity'] or '-'):<9} {handled:<9} {_duration(b['fixedAfter']):<9} {_duration(b['doneAfter']):<9} {now}")
+        def step(name):
+            after = b.get(f"{name}After")
+            if after is not None:
+                return _duration(after)
+            waited = b["waiting"].get(name)
+            return f"({_duration(waited)})" if waited is not None else "-"
+        handled = step("handled")
+        print(f"  #{b['number']:<5} {(b['severity'] or '-'):<9} {step('acknowledged'):<9} {handled:<9} {_duration(b['fixedAfter']):<9} {_duration(b['doneAfter']):<9} {now}")
         print(f"         {b['title'][:70]}")
     print()
     print("  (time) in brackets = still waiting. Times are calendar time from filing.")

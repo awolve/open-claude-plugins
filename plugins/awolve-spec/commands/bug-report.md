@@ -1,5 +1,5 @@
 ---
-description: Bug SLA report for a project and period — new bugs, time to handled, fixed and done, and what became of each
+description: Bug SLA report for a project and period — new bugs, time to acknowledged, handled, fixed and done, and what became of each
 ---
 
 # /bug-report
@@ -17,7 +17,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py bug-report <project-id> --fro
 What the numbers mean:
 
 - **Which bugs:** every item that was a bug when it was filed in the period. A bug later turned into an implementation item or an activity still counts, shown as `now implementation (...)`.
-- **Handled:** the first move out of `new`, to any status, or the first kind change. A bug filed straight into `planned` or later is handled at filing.
+- **Acknowledged:** the first move out of `new`, to any status, or the first kind change. The team's first response.
+- **Handled:** the first move past `new` and `acknowledged`, or the first kind change. A bug triaged straight from `new` is acknowledged and handled at the same moment; one filed straight into `planned` or later is both at filing.
 - **Fixed:** first reached `ready_for_testing` (shown to bug users as ready for retest). **Done:** first reached `completed`. A bug moved back after either is marked `reopened`; the times keep the first time.
 - **Waiting:** a time in brackets is how long a still-open bug has waited so far.
 - Times are calendar time from filing. No business hours.

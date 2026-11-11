@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.67.0 — 2026-11-11 — Björn Allvin
+
+- **The `acknowledged` status**, for services that have it: the team has received a bug or item but not yet triaged it. `set-bug-status` and `backlog-update --status` take it (the service lets only internal users set it). `bugs` shows it instead of `open`, and `bugs --status acknowledged` or `--status new` tell the two apart.
+- **`bug-report` shows time to acknowledged** beside handled, fixed and done, in the summary and per bug. Against an older service the column shows `-`.
+
 ## 0.66.0 — 2026-11-11 — Björn Allvin
 
 - **`bug-report <project> --from <day> --to <day>`**, for services with the bug report. For the bugs filed in the period: how many came in, how long each took to be handled, fixed and done, and what became of it, including bugs later turned into other kinds. A summary with medians, split by severity, then one line per bug. `--json` gives the service's answer. Against a service without it, the command says so.
