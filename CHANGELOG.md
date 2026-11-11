@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.66.0 — 2026-11-11 — Björn Allvin
+
+- **`bug-report <project> --from <day> --to <day>`**, for services with the bug report. For the bugs filed in the period: how many came in, how long each took to be handled, fixed and done, and what became of it, including bugs later turned into other kinds. A summary with medians, split by severity, then one line per bug. `--json` gives the service's answer. Against a service without it, the command says so.
+
 ## 0.65.0 — 2026-11-03 — Björn Allvin
 
 - **`milestone-add --epic` and `--feature` plan the epic or feature itself**, for services that plan at any level. The epic or feature goes into the deadline, and its items follow it unless they have a deadline of their own, including items added later. This works before any items exist. The CLI says how many items follow it.

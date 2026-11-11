@@ -80,6 +80,7 @@ Print the following command reference. Do NOT run any scripts — just display t
 | `/awolve-spec:edit-backlog-comment` | Edit a backlog comment (author only) |
 | `/awolve-spec:delete-backlog-comment` | Delete a backlog comment (author only) |
 | `/awolve-spec:bugs` | List open bugs (filterable by assignee and tag) |
+| `/awolve-spec:bug-report` | Bug SLA report for a period: new bugs, time to handled, fixed and done |
 | `/awolve-spec:my-daily` | What was assigned to you recently, across all your projects (the daily mail's list) |
 | `/awolve-spec:my-weekly` | Everything open assigned to you, across all your projects (the weekly mail's list) |
 | `/awolve-spec:my-work` | Your own order of work across projects (or a person's); the first is the Now |

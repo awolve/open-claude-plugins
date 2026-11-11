@@ -150,6 +150,9 @@ Usage:
                                        — Create a bug
     specs-cli.py view-bug <project-id> <bug-number> [--json] [--images [dir]]
                                        — Show full details of a single bug (description, severity, repro, etc.)
+    specs-cli.py bug-report <project-id> --from YYYY-MM-DD --to YYYY-MM-DD [--json]
+                                       — Bug SLA report: bugs filed in the period, time to handled,
+                                         fixed and done, and what became of each
     specs-cli.py set-bug-status <project-id> <bug-number> <status>
                                        — Change a bug's status (open|triaged|in_progress|ready_for_retest|resolved|closed,
                                          or a shared status: new|planned|in_progress|blocked|ready_for_testing|completed|archived)
@@ -3655,6 +3658,97 @@ def _require_bug(headers, service_url, project_id, number):
         print(f"Signum: failed to fetch bugs (HTTP {status_code})", file=sys.stderr)
         sys.exit(1)
     return bug, full
+
+
+def _duration(seconds):
+    """Seconds as a short duration: 45m, 6h 10m, 3d 4h."""
+    if seconds is None:
+        return "-"
+    minutes = int(seconds) // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h" if hours else f"{days}d"
+
+
+def bug_report(project_id, date_from, date_to, as_json=False):
+    """Bug SLA report for one project and period (spec 057).
+
+    Every item that was a bug when it was filed in the period, including bugs
+    later turned into other kinds. Times are calendar time from filing.
+    """
+    cfg = config.read_config()
+    if not cfg:
+        print("Signum: no config found", file=sys.stderr)
+        sys.exit(1)
+    headers = auth.get_headers()
+    if not headers:
+        print("Signum: not authenticated — run /awolve-spec:login first", file=sys.stderr)
+        sys.exit(1)
+
+    query = urllib.parse.urlencode({"from": date_from, "to": date_to})
+    url = f"{cfg['service_url']}/api/portal/projects/{urllib.parse.quote(project_id)}/bug-report?{query}"
+    try:
+        status_code, body = api_request(url, headers=headers)
+    except ConnectionError as e:
+        print(f"Signum: failed to fetch the bug report — {e}", file=sys.stderr)
+        sys.exit(1)
+    if status_code == 404:
+        print("Signum: this Signum server has no bug report yet (needs spec 057)", file=sys.stderr)
+        sys.exit(1)
+    if status_code != 200:
+        print(f"Signum: failed to fetch the bug report (HTTP {status_code}) {body[:300]}", file=sys.stderr)
+        sys.exit(1)
+
+    report = json.loads(body)
+    if as_json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return
+
+    s = report["summary"]
+    print(f"Bug report — {project_id}, {report['from']} to {report['to']} (Stockholm days)")
+    if report.get("incomplete"):
+        print(f"  Note: history starts {report['historyStartsAt']}; bugs filed before that have no times.")
+    print()
+    print(f"  New bugs: {s['newBugs']}   handled: {s['handled']}   fixed: {s['fixed']}   done: {s['done']}   still open: {s['open']}")
+    outcomes = ", ".join(f"{k} {v}" for k, v in s["outcomes"].items() if v)
+    if outcomes:
+        print(f"  Now: {outcomes}")
+    print()
+    print("  Time from filing    median     longest")
+    for step in ("handled", "fixed", "done"):
+        t = s["times"][step]
+        print(f"    {step:<17} {_duration(t['median']):<10} {_duration(t['max'])}")
+    if len(s["bySeverity"]) > 1:
+        print()
+        print("  By severity         new   median to handled   median to done")
+        order = ["critical", "high", "medium", "low", "none"]
+        for sev in sorted(s["bySeverity"], key=lambda k: order.index(k) if k in order else 99):
+            b = s["bySeverity"][sev]
+            print(f"    {sev:<17} {b['newBugs']:<5} {_duration(b['times']['handled']['median']):<19} {_duration(b['times']['done']['median'])}")
+
+    bugs = report["bugs"]
+    if not bugs:
+        return
+    print()
+    print("  #      sev       handled   fixed     done      now")
+    for b in bugs:
+        now = b["outcome"]
+        if b["outcome"] == "converted":
+            now = f"now {b['kind']} ({b['state']})"
+        elif b["outcome"] == "open":
+            now = f"open ({b['state']})"
+        if b.get("reopened"):
+            now += ", reopened"
+        handled = _duration(b["handledAfter"]) if b["handledAfter"] is not None else (
+            f"({_duration(b['waiting']['handled'])})" if b["waiting"]["handled"] is not None else "-")
+        print(f"  #{b['number']:<5} {(b['severity'] or '-'):<9} {handled:<9} {_duration(b['fixedAfter']):<9} {_duration(b['doneAfter']):<9} {now}")
+        print(f"         {b['title'][:70]}")
+    print()
+    print("  (time) in brackets = still waiting. Times are calendar time from filing.")
 
 
 def view_bug(project_id, bug_number, as_json=False, save_images=False, images_dir=None):
@@ -9400,6 +9494,23 @@ def main():
         list_bugs(proj, assignee_filter=assignee_filter, tag_filters=tag_filters,
                   untagged="--untagged" in args, status_filter=status_filter,
                   include_all="--all" in args, as_json="--json" in args, source_filter=source_filter)
+    elif cmd == "bug-report":
+        values = {}
+        positional = []
+        rest = args[1:]
+        i = 0
+        while i < len(rest):
+            if rest[i] in ("--from", "--to") and i + 1 < len(rest):
+                values[rest[i]] = rest[i + 1]
+                i += 2
+                continue
+            if not rest[i].startswith("-"):
+                positional.append(rest[i])
+            i += 1
+        if not positional or "--from" not in values or "--to" not in values:
+            print("Usage: specs-cli.py bug-report <project-id> --from YYYY-MM-DD --to YYYY-MM-DD [--json]", file=sys.stderr)
+            sys.exit(1)
+        bug_report(positional[0], values["--from"], values["--to"], as_json="--json" in args)
     elif cmd == "view-bug":
         as_json = "--json" in args
         save_images = "--images" in args
