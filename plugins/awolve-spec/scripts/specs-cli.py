@@ -1667,11 +1667,77 @@ def specs_log(
         print(f"Signum: log skipped {err}", file=sys.stderr)
 
 
+# A cascade is one operation that changed many records: a feature rename moving its items, a tag delete
+# untagging them. On services that log one event per changed record, each of those carries
+# metadata.cascadeId, and the operation's own event carries the same value as metadata.cascadeRoot.
+# `log` shows the operation as one line with its records under it, as the portal's history does.
+_CASCADE_LABEL = {
+    "feature.rename": "moved with a feature rename",
+    "feature.rekey": "re-keyed with a deleted feature",
+    "feature.delete": "deleted with a feature",
+    "feature.restore": "restored with a feature",
+    "tag.delete": "untagged when a tag was deleted",
+    "comment.delete": "deleted with a comment",
+    "item.delete": "changed when an item was deleted",
+    "milestone.delete": "unplanned when a deadline was deleted",
+    "epic.delete": "moved out of a deleted epic",
+    "item.promote": "moved by a promotion to epic",
+}
+_CASCADE_NOUN = {
+    "backlog": ("item", "items"), "bug": ("bug", "bugs"), "document": ("document", "documents"),
+    "feature": ("feature", "features"), "epic": ("epic", "epics"), "comment": ("reply", "replies"),
+}
+_CASCADE_SHOWN = 5  # children listed under a cascade line; `--json` has them all
+
+
+def _cascade_label(children):
+    """'3 items untagged when tag 'Legacy' was deleted', for a cascade whose own event is not in the list."""
+    counts = {}
+    for c in children:
+        counts[c["entityType"]] = counts.get(c["entityType"], 0) + 1
+    parts = [f"{n} {_CASCADE_NOUN.get(t, (t, t + 's'))[0 if n == 1 else 1]}" for t, n in counts.items()]
+    listed = parts[0] if len(parts) <= 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    of = (children[0].get("metadata") or {}).get("cascadeOf") or {}
+    op = of.get("op", "")
+    return f"{listed} {of.get('cause') or _CASCADE_LABEL.get(op) or f'changed by {op}'}"
+
+
+def _fold_cascades(events):
+    """Group a cascade's events into one row, placed where its first event falls in `events`.
+
+    Returns (event, children) pairs. A cascade's row is its operation's own event (the oldest, if it logged
+    several; the rest join the children) or None when that event isn't in the list. Ordinary events have
+    no children. Events without these keys (older services, older events) pass through unchanged.
+    """
+    groups, order = {}, []
+    for ev in events:
+        md = ev.get("metadata") or {}
+        key = md.get("cascadeId") or md.get("cascadeRoot")
+        if not key:
+            order.append(("one", ev))
+            continue
+        if key not in groups:
+            groups[key] = {"heads": [], "children": []}
+            order.append(("group", key))
+        groups[key]["heads" if not md.get("cascadeId") else "children"].append(ev)
+    rows = []
+    for kind, val in order:
+        if kind == "one":
+            rows.append((val, []))
+            continue
+        g = groups[val]
+        heads = sorted(g["heads"], key=lambda e: e["id"])
+        children = sorted(heads[1:] + g["children"], key=lambda e: e["id"])
+        rows.append((heads[0] if heads else None, children))
+    return rows
+
+
 def _print_log_events(events, since_last_visit=False, multi_project=False):
     """Render log events in human-readable colored output.
 
     When `multi_project` is True, each row is prefixed with the originating
-    project id so a merged cross-project feed stays legible.
+    project id so a merged cross-project feed stays legible. A cascade is one
+    row with the records it changed listed under it (`_fold_cascades`).
     """
     if not events:
         if since_last_visit:
@@ -1687,7 +1753,15 @@ def _print_log_events(events, since_last_visit=False, multi_project=False):
 
     # Group by day
     last_day = None
-    for ev in events:
+    for head, children in _fold_cascades(events):
+        ev = head
+        if ev is None:
+            # The operation's own event isn't in this list: a row that names the cause.
+            first = children[0]
+            of = (first.get("metadata") or {}).get("cascadeOf") or {}
+            ev = dict(first, entityType=of.get("entityType") or first["entityType"], summary=_cascade_label(children))
+        if children:
+            ev = dict(ev, summary=f"{ev['summary']}  {_DIM}(+{len(children)} change{'' if len(children) == 1 else 's'}){_RESET}")
         try:
             dt = datetime.fromisoformat(ev["createdAt"].replace("Z", "+00:00"))
         except ValueError:
@@ -1714,6 +1788,11 @@ def _print_log_events(events, since_last_visit=False, multi_project=False):
             f"{ev['summary']}  "
             f"{_DIM}— {ev['actor']} · {relative}{_RESET}"
         )
+        indent = " " * (2 + 5 + 2 + (proj_width + 4 if multi_project else 0) + 8 + 2)
+        for child in children[:_CASCADE_SHOWN]:
+            print(f"{indent}{_DIM}↳{_RESET} {child['summary']}")
+        if len(children) > _CASCADE_SHOWN:
+            print(f"{indent}{_DIM}… and {len(children) - _CASCADE_SHOWN} more (--json lists them all){_RESET}")
 
 
 def _parse_iso(s):

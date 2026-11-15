@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.68.0 — 2026-11-15 — Mattias Aspelund
+
+- **`log` shows an operation that changed many records as one line**, for services that log every record a cascade changes (Signum 0.182.0 on). A feature rename moving its documents and items, or a tag delete untagging items, is the operation's own line with `(+N changes)`, and the first five records under it. When the operation's own event isn't in the list, the line names the cause ("2 items untagged when tag 'Legacy' was deleted"). `--json` is unchanged: every event, as the service returns it. Older services and older events show as before.
+
 ## 0.67.0 — 2026-11-11 — Björn Allvin
 
 - **The `acknowledged` status**, for services that have it: the team has received a bug or item but not yet triaged it. `set-bug-status` and `backlog-update --status` take it (the service lets only internal users set it). `bugs` shows it instead of `open`, and `bugs --status acknowledged` or `--status new` tell the two apart.

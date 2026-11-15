@@ -65,6 +65,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/specs-cli.py log --all [flags]
 The command returns colored ANSI output — don't dump it verbatim. Instead:
 
 - Group related events ("5 version edits on melbye-tender-tool/requirements.md", not 5 separate lines)
+- A line with `(+N changes)` and `↳` lines under it is one operation that changed many records (a feature rename moving its items, a tag delete untagging them). Report it as one change, with the count, not as N separate events
 - Call out human-interesting events first: feature creates, status changes, new bugs, reviews, comments, access grants. Deprioritize bulk version updates (those are usually routine CLI syncs).
 - Use bullet points organized by project when `--all` is in play
 - Mention the person and rough time ("Bjorn 2h ago")
