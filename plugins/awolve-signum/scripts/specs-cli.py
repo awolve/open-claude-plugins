@@ -37,6 +37,7 @@ Usage:
                                          Keeps the item's title and status; refuses an epic or a linked item
     specs-cli.py create-doc <project-id> <feature-name> <filename>
                                        — Add a document to an existing feature
+                                         (<name>.md, or a mockup mockups/<name>.html)
     specs-cli.py rename-feature <project-id> <old-name> <new-name>
                                        — Rename a feature folder and update the service
     specs-cli.py rename-doc <file-path> <new-filename>
@@ -271,13 +272,59 @@ FM_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# A mockup (`mockups/<name>.html`) carries the same YAML block inside an HTML
+# comment, so a browser shows nothing of it:
+#   <!--
+#   ---
+#   spec_doc_id: …
+#   ---
+#   -->
+HTML_FM_PATTERN = re.compile(
+    r"^﻿?"           # optional BOM
+    r"<!--[ \t]*\r?\n"    # opening comment
+    r"---[ \t]*\r?\n"     # opening ---
+    r"(.*?)\r?\n"         # frontmatter body (lazy)
+    r"---[ \t]*\r?\n"     # closing ---
+    r"-->[ \t]*\r?\n?",   # closing comment
+    re.DOTALL,
+)
+
+# A mockup's filename relative to its feature folder (spec 062).
+MOCKUP_FILENAME = re.compile(r"^mockups/[a-z0-9][a-z0-9._-]*\.html$")
+
+
+def is_html_doc(path):
+    """True when `path` is a file whose sync header lives in an HTML comment."""
+    return bool(path) and path.lower().endswith(".html")
+
+
+def is_mockup_path(path):
+    """True for `<anything>/mockups/<name>.html`, the only HTML a spec tree syncs."""
+    if not path or not path.endswith(".html"):
+        return False
+    return os.path.basename(os.path.dirname(path)) == "mockups"
+
+
+def is_spec_file(path):
+    """A file the sync handles: any `.md`, or a mockup under `mockups/`."""
+    name = os.path.basename(path)
+    if name.startswith("."):
+        return False
+    return name.endswith(".md") or is_mockup_path(path)
+
+
+def _match_header(content):
+    return FM_PATTERN.match(content) or HTML_FM_PATTERN.match(content)
+
 
 def parse_frontmatter(content):
     """Parse YAML frontmatter. Returns (metadata_dict, body_without_frontmatter).
 
     Tolerates BOM, \\r\\n line endings, and trailing whitespace on delimiters.
+    Reads both the markdown form and the mockup form (the same block inside
+    an HTML comment).
     """
-    m = FM_PATTERN.match(content)
+    m = _match_header(content)
     if not m:
         return {}, content
     fm_text = m.group(1)
@@ -299,17 +346,21 @@ def parse_frontmatter(content):
     return meta, body
 
 
-def render_frontmatter(meta, body):
+def render_frontmatter(meta, body, path=None):
     """Render metadata dict and body back into markdown with frontmatter.
 
     Normalises the join: body always starts with exactly one blank line.
+    When `path` is an `.html` file, the block goes inside an HTML comment and
+    the body follows on the next line.
     """
     lines = ["---"]
     for k, v in meta.items():
         lines.append(f"{k}: {v}")
     lines.append("---")
-    # Ensure exactly one blank line between frontmatter and body
     body = body.lstrip("\r\n")
+    if is_html_doc(path):
+        return "<!--\n" + "\n".join(lines) + "\n-->\n" + body
+    # Ensure exactly one blank line between frontmatter and body
     lines.append("")
     return "\n".join(lines) + "\n" + body
 
@@ -320,7 +371,7 @@ def strip_frontmatter(content):
     Handles the case where frontmatter leaked into body (double frontmatter).
     """
     while True:
-        m = FM_PATTERN.match(content)
+        m = _match_header(content)
         if not m:
             return content
         content = content[m.end():]
@@ -1003,9 +1054,9 @@ def _scan_local_specs(specs_path):
         if ".specs-trash" in dirs:
             dirs.remove(".specs-trash")
         for fname in files:
-            if not fname.endswith(".md"):
-                continue
             fpath = os.path.join(root, fname)
+            if not is_spec_file(fpath):
+                continue
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     content = f.read(4096)
@@ -1183,7 +1234,7 @@ def pull_project(
                             local_meta["feature_status"] = feature_status
                         if doc_status:
                             local_meta["doc_status"] = doc_status
-                        atomic_write(local_path, render_frontmatter(local_meta, local_body))
+                        atomic_write(local_path, render_frontmatter(local_meta, local_body, local_path))
                     # Self-heal: local now matches remote, so any previously
                     # staged conflict for this doc is reconciled — clear it.
                     if doc_id in staged_conflicts:
@@ -1220,7 +1271,7 @@ def pull_project(
                         sidecar_meta["doc_status"] = doc_status
                     if source_url:
                         sidecar_meta["source"] = source_url
-                    remote_text = render_frontmatter(sidecar_meta, dl_body)
+                    remote_text = render_frontmatter(sidecar_meta, dl_body, local_path)
                     if conflict_store.ensure_writable():
                         try:
                             conflict_store.stage(
@@ -1269,7 +1320,7 @@ def pull_project(
         if source_url:
             meta["source"] = source_url
 
-        atomic_write(local_path, render_frontmatter(meta, dl_body))
+        atomic_write(local_path, render_frontmatter(meta, dl_body, local_path))
         # Self-heal: we just wrote remote over local, so any staged conflict
         # for this doc is now reconciled — clear it.
         if doc_id in staged_conflicts:
@@ -1917,7 +1968,7 @@ def push(file_path, base_version_override=None):
 
     # Push
     push_url = f"{service_url}/api/sync/documents/{doc_id}/content?base_version={base_version}"
-    headers["Content-Type"] = "text/markdown; charset=utf-8"
+    headers["Content-Type"] = ("text/html" if is_html_doc(abs_path) else "text/markdown") + "; charset=utf-8"
 
     try:
         status_code, resp_body = api_request(push_url, method="PUT", headers=headers, data=body.strip())
@@ -1956,7 +2007,7 @@ def push(file_path, base_version_override=None):
     # last editor of a document they never opened.
     meta.update(_synced_status_fields(service_url, headers, proj["id"], doc_id))
 
-    atomic_write(abs_path, render_frontmatter(meta, body))
+    atomic_write(abs_path, render_frontmatter(meta, body, abs_path))
 
     rel = os.path.relpath(abs_path, proj["path"])
     print(f"Signum: pushed {proj['id']}/{rel} (v{new_version})")
@@ -2077,7 +2128,7 @@ def conflict_resolve(ref, mode, merged_file=None):
         # Caller may pass either a full doc or just a body; prefer the local
         # identity fields, fall back to whatever the merged file carried.
         local_meta.setdefault("spec_doc_id", merged_meta.get("spec_doc_id", doc_id))
-        atomic_write(local_path, render_frontmatter(local_meta, merged_body))
+        atomic_write(local_path, render_frontmatter(local_meta, merged_body, local_path))
 
     ok = push(local_path, base_version_override=remote_version)
     if ok:
@@ -2204,9 +2255,9 @@ def show_status():
         found = 0
         for root, _dirs, files in os.walk(specs_path):
             for fname in sorted(files):
-                if not fname.endswith(".md"):
-                    continue
                 fpath = os.path.join(root, fname)
+                if not is_spec_file(fpath):
+                    continue
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         content = f.read(2048)
@@ -2425,7 +2476,7 @@ def _has_twin(path, doc_id):
         return False
     for name in names:
         other = os.path.join(folder, name)
-        if other != path and name.endswith(".md") and _doc_id_of(other) == doc_id:
+        if other != path and is_spec_file(other) and _doc_id_of(other) == doc_id:
             return True
     return False
 
@@ -2439,9 +2490,9 @@ def _changed_spec_files(cfg, since, twins=None):
         for root, dirs, files in os.walk(proj["path"], followlinks=True):
             dirs[:] = [d for d in dirs if not d.startswith(".")]
             for name in files:
-                if not name.endswith(".md") or name.startswith("."):
-                    continue
                 full = os.path.join(root, name)
+                if not is_spec_file(full):
+                    continue
                 try:
                     if os.path.getmtime(full) <= since:
                         continue
@@ -7166,8 +7217,45 @@ def create_feature(project_id, name, initial_status="specifying", description=No
     print(f"  portal: {service_url}/portal/{project_id}/specs/{folder_name}")
 
 
+def _normalise_doc_filename(filename):
+    """The filename create-doc registers: `<name>.md`, or a mockup
+    `mockups/<name>.html` (spec 062). Exits on a malformed mockup name, so a
+    typo never quietly becomes a markdown file."""
+    if filename.startswith("mockups/") or filename.endswith(".html"):
+        if not filename.endswith(".html"):
+            filename = f"{filename}.html"
+        if not MOCKUP_FILENAME.match(filename):
+            print(
+                f"Signum: '{filename}' is not a valid mockup name — use "
+                "mockups/<name>.html (lower case letters, digits, '.', '_', '-'; no subfolders)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return filename
+    if not filename.endswith(".md"):
+        filename = f"{filename}.md"
+    return filename
+
+
+def _mockup_placeholder(title):
+    """First version of a new mockup: a valid, empty page at the default width."""
+    return (
+        "<!doctype html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "<meta charset=\"utf-8\">\n"
+        "<meta name=\"signum:design-width\" content=\"1280\">\n"
+        f"<title>{title}</title>\n"
+        "</head>\n"
+        "<body>\n"
+        f"<h1>{title}</h1>\n"
+        "</body>\n"
+        "</html>"
+    )
+
+
 def create_document(project_id, feature_name, filename):
-    """Add a document to an existing feature."""
+    """Add a document to an existing feature (`<name>.md` or `mockups/<name>.html`)."""
     cfg = config.read_config()
     if not cfg:
         print("Signum: no config found", file=sys.stderr)
@@ -7184,8 +7272,7 @@ def create_document(project_id, feature_name, filename):
 
     feature_id = f"{project_id}/{feature_name}"
 
-    if not filename.endswith(".md"):
-        filename = f"{filename}.md"
+    filename = _normalise_doc_filename(filename)
 
     local_dir = os.path.join(specs_path, feature_name)
     if not os.path.isdir(local_dir):
@@ -7194,6 +7281,11 @@ def create_document(project_id, feature_name, filename):
         sys.exit(1)
 
     local_path = os.path.join(local_dir, filename)
+    if is_html_doc(filename):
+        title = os.path.basename(filename)[: -len(".html")].replace("-", " ").title()
+        placeholder = _mockup_placeholder(title)
+    else:
+        placeholder = f"# {filename.replace('.md', '').replace('-', ' ').title()}"
     if os.path.isfile(local_path):
         with open(local_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -7207,9 +7299,9 @@ def create_document(project_id, feature_name, filename):
         with open(local_path, "r", encoding="utf-8") as f:
             existing = f.read()
         _, initial_content = parse_frontmatter(existing)
-        initial_content = initial_content.strip() or f"# {filename.replace('.md', '').replace('-', ' ').title()}"
+        initial_content = initial_content.strip() or placeholder
     else:
-        initial_content = f"# {filename.replace('.md', '').replace('-', ' ').title()}"
+        initial_content = placeholder
 
     # Register document in service
     import urllib.parse
@@ -7243,11 +7335,11 @@ def create_document(project_id, feature_name, filename):
         with open(local_path, "r", encoding="utf-8") as f:
             existing_body = f.read()
         with open(local_path, "w", encoding="utf-8") as f:
-            f.write(render_frontmatter(meta, existing_body))
+            f.write(render_frontmatter(meta, existing_body, local_path))
     else:
-        title = filename.replace(".md", "").replace("-", " ").title()
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
         with open(local_path, "w", encoding="utf-8") as f:
-            f.write(render_frontmatter(meta, f"\n# {title}\n"))
+            f.write(render_frontmatter(meta, f"\n{placeholder}\n", local_path))
 
     print(f"Signum: created document '{filename}' in '{feature_id}'")
     print(f"  path: {local_path}")
@@ -7346,9 +7438,9 @@ def _doc_id_siblings(abs_path, doc_id):
     except OSError:
         return twins
     for fname in sorted(names):
-        if not fname.endswith(".md"):
-            continue
         fpath = os.path.join(folder, fname)
+        if not is_spec_file(fpath):
+            continue
         if not os.path.isfile(fpath):
             continue
         # Compare by inode, not string: macOS/OneDrive can hand back the
@@ -7411,7 +7503,12 @@ def rename_document(file_path, new_filename):
         print(f"Signum: file not found: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    if not new_filename.endswith(".md"):
+    if is_mockup_path(abs_path):
+        # A mockup stays a mockup: the service name keeps `mockups/`.
+        if not new_filename.startswith("mockups/"):
+            new_filename = f"mockups/{os.path.basename(new_filename)}"
+        new_filename = _normalise_doc_filename(new_filename)
+    elif not new_filename.endswith(".md"):
         new_filename = f"{new_filename}.md"
 
     with open(abs_path, "r", encoding="utf-8") as f:
@@ -7443,7 +7540,8 @@ def rename_document(file_path, new_filename):
         print(f"Signum: failed to rename document (HTTP {status_code}): {resp_body}", file=sys.stderr)
         sys.exit(1)
 
-    new_path = os.path.join(os.path.dirname(abs_path), new_filename)
+    local_name = os.path.basename(new_filename) if is_mockup_path(abs_path) else new_filename
+    new_path = os.path.join(os.path.dirname(abs_path), local_name)
     os.rename(abs_path, new_path)
 
     print(f"Signum: renamed '{os.path.basename(abs_path)}' → '{new_filename}'")
