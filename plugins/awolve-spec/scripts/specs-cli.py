@@ -727,11 +727,18 @@ def _print_comment(c):
     anchor = c.get("anchorText", "")
     comment_id = c.get("id", "?")
 
-    prefix = f"  [{ctype}]" if ctype in ("inline", "area") else "  "
-    print(f"{prefix} {author} ({date}) [{comment_id}]")
+    # A reply to an area comment comes back as type "area" with parentId set
+    # and no shape: print it as a reply, not as a new mark.
+    is_area_reply = ctype == "area" and c.get("parentId")
+    if is_area_reply:
+        prefix = "  [reply]"
+    else:
+        prefix = f"  [{ctype}]" if ctype in ("inline", "area") else "  "
+    suffix = f" → re [{c['parentId']}]" if is_area_reply else ""
+    print(f"{prefix} {author} ({date}) [{comment_id}]{suffix}")
     if anchor:
         print(f"    anchor: \"{anchor}\"")
-    shape = _format_area(c) if ctype == "area" else None
+    shape = _format_area(c) if ctype == "area" and not is_area_reply else None
     if shape:
         print(f"    {shape}: {body}")
     else:
