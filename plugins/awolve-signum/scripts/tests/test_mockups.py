@@ -237,6 +237,41 @@ class PostToolUseHookTest(unittest.TestCase):
         self.assertEqual(specs_cli._changed_spec_files(self.cfg, 0), [mockup])
 
 
+class AreaCommentPrintTest(unittest.TestCase):
+    def _print(self, c):
+        out, prev = io.StringIO(), sys.stdout
+        sys.stdout = out
+        try:
+            specs_cli._print_comment(c)
+        finally:
+            sys.stdout = prev
+        return out.getvalue()
+
+    BASE = {"id": "c1", "author": "Ann", "createdAt": "2026-11-20T10:00:00Z",
+            "number": 3, "version": 1, "type": "area", "body": "Logo is too small"}
+
+    def test_box(self):
+        c = dict(self.BASE, anchorShape={"kind": "box", "x1": 596, "y1": 118, "x2": 684, "y2": 170, "designWidth": 1280})
+        out = self._print(c)
+        self.assertIn("  [area] Ann (2026-11-20) [c1]\n", out)
+        self.assertIn("    #3 box (596,118)–(684,170) on v1: Logo is too small\n", out)
+
+    def test_arrow_fractional_and_other_width(self):
+        c = dict(self.BASE, anchorShape={"kind": "arrow", "x1": 10.25, "y1": 20, "x2": 30, "y2": 40.0, "designWidth": 390})
+        self.assertIn("#3 arrow (10.2,20)→(30,40) on v1 (design width 390): Logo", self._print(c))
+
+    def test_area_without_shape_prints_body(self):
+        out = self._print(dict(self.BASE))
+        self.assertIn("    Logo is too small\n", out)
+
+    def test_inline_and_thread_unchanged(self):
+        inline = {"id": "c2", "author": "Bo", "createdAt": "2026-11-20", "type": "inline",
+                  "anchorText": "foo", "body": "hi"}
+        self.assertEqual(self._print(inline), '  [inline] Bo (2026-11-20) [c2]\n    anchor: "foo"\n    hi\n\n')
+        thread = {"id": "c3", "author": "Bo", "createdAt": "2026-11-20", "type": "thread", "body": "hi"}
+        self.assertEqual(self._print(thread), "   Bo (2026-11-20) [c3]\n    hi\n\n")
+
+
 class CreateDocTest(unittest.TestCase):
     """create-doc registers `mockups/<name>.html` and refuses bad mockup names."""
 

@@ -727,12 +727,44 @@ def _print_comment(c):
     anchor = c.get("anchorText", "")
     comment_id = c.get("id", "?")
 
-    prefix = f"  [{ctype}]" if ctype == "inline" else "  "
+    prefix = f"  [{ctype}]" if ctype in ("inline", "area") else "  "
     print(f"{prefix} {author} ({date}) [{comment_id}]")
     if anchor:
         print(f"    anchor: \"{anchor}\"")
-    print(f"    {body}")
+    shape = _format_area(c) if ctype == "area" else None
+    if shape:
+        print(f"    {shape}: {body}")
+    else:
+        print(f"    {body}")
     print()
+
+
+def _format_area(c):
+    """`#3 box (596,118)–(684,170) on v1` for an area comment on a mockup
+    (spec 062): design pixels from the page's top-left, so a session can find
+    the element at that spot in the HTML. None when the shape is missing."""
+    s = c.get("anchorShape")
+    if not isinstance(s, dict):
+        return None
+
+    def n(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return "?"
+        return str(int(f)) if f.is_integer() else f"{f:.1f}"
+
+    kind = s.get("kind", "box")
+    sep = "→" if kind == "arrow" else "–"
+    out = f"{kind} ({n(s.get('x1'))},{n(s.get('y1'))}){sep}({n(s.get('x2'))},{n(s.get('y2'))})"
+    if c.get("number") is not None:
+        out = f"#{c['number']} {out}"
+    if c.get("version") is not None:
+        out += f" on v{c['version']}"
+    width = s.get("designWidth")
+    if width and n(width) != "1280":
+        out += f" (design width {n(width)})"
+    return out
 
 
 def add_comment(file_path, body, inline=False, anchor_text=None):
