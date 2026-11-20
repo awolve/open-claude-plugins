@@ -2372,6 +2372,10 @@ def handle_post_tool_use():
     if not proj:
         return
 
+    # HTML syncs only as a mockup (`<feature>/mockups/<name>.html`, spec 062).
+    if is_html_doc(file_path) and not is_mockup_path(file_path):
+        return
+
     # Check that file has spec frontmatter
     abs_file = os.path.abspath(file_path)
     if not os.path.isfile(abs_file):

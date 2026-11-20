@@ -5,10 +5,12 @@ Run from the scripts dir:  python3 -m unittest discover -s tests
 """
 
 import hashlib
+import io
 import importlib.util
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -175,6 +177,64 @@ class SyncRoundTripTest(unittest.TestCase):
         self._pull()
         index = specs_cli._scan_local_specs(self.specs)
         self.assertEqual(set(index), {"d1", "m1"})
+
+
+class PostToolUseHookTest(unittest.TestCase):
+    """A Write/Edit on a mockup is pushed; HTML elsewhere in the tree is not."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="mockup-hook-")
+        self.specs = os.path.join(self.root, "specs")
+        os.makedirs(os.path.join(self.specs, "001-thing", "mockups"))
+        self.cfg = {
+            "service_url": "https://example.invalid",
+            "projects": [{"id": "demo", "path": self.specs}],
+            "project_root": self.root,
+        }
+        self.pushed = []
+        self._saved = (specs_cli.config.read_config, specs_cli.push)
+        specs_cli.config.read_config = lambda: self.cfg
+        specs_cli.push = lambda path, base_version_override=None: self.pushed.append(path) or True
+
+    def tearDown(self):
+        (specs_cli.config.read_config, specs_cli.push) = self._saved
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def _write(self, rel, path_meta):
+        path = os.path.join(self.specs, "001-thing", rel)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(specs_cli.render_frontmatter({"spec_doc_id": "x", "spec_version": 1}, HTML_BODY, path_meta))
+        return path
+
+    def _hook(self, path, tool="Write"):
+        prev = sys.stdin
+        sys.stdin = io.StringIO(json.dumps({"tool_name": tool, "tool_input": {"file_path": path}}))
+        try:
+            specs_cli.handle_post_tool_use()
+        finally:
+            sys.stdin = prev
+
+    def test_mockup_edit_is_pushed(self):
+        path = self._write("mockups/login.html", "mockups/login.html")
+        self._hook(path, "Edit")
+        self.assertEqual(self.pushed, [path])
+
+    def test_markdown_edit_is_pushed(self):
+        path = os.path.join(self.specs, "001-thing", "design.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(specs_cli.render_frontmatter({"spec_doc_id": "d", "spec_version": 1}, MD_BODY, path))
+        self._hook(path)
+        self.assertEqual(self.pushed, [path])
+
+    def test_html_outside_mockups_is_ignored(self):
+        path = self._write("login.html", "mockups/login.html")
+        self._hook(path)
+        self.assertEqual(self.pushed, [])
+
+    def test_sweep_finds_changed_mockup(self):
+        mockup = self._write("mockups/login.html", "mockups/login.html")
+        self._write("login.html", "mockups/login.html")  # not a mockup
+        self.assertEqual(specs_cli._changed_spec_files(self.cfg, 0), [mockup])
 
 
 class CreateDocTest(unittest.TestCase):
