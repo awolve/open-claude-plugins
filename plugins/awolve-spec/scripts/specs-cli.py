@@ -743,6 +743,10 @@ def _print_comment(c):
         print(f"    {shape}: {body}")
     else:
         print(f"    {body}")
+    # The service nests replies under their parent; a reply carries no anchor.
+    for r in c.get("replies") or []:
+        print(f"      ↳ {r.get('author', '?')} ({(r.get('createdAt') or '?')[:10]}) [{r.get('id', '?')}]")
+        print(f"        {r.get('body', '')}")
     print()
 
 

@@ -265,6 +265,17 @@ class AreaCommentPrintTest(unittest.TestCase):
                  "type": "area", "parentId": "c1", "anchorShape": None, "body": "Fixed in v2"}
         self.assertEqual(self._print(reply), "  [reply] Bo (2026-11-20) [c9] → re [c1]\n    Fixed in v2\n\n")
 
+    def test_nested_area_reply_prints_under_its_mark(self):
+        reply = {"id": "c9", "author": "Bo", "createdAt": "2026-11-20T11:00:00Z", "number": 4, "version": 2,
+                 "type": "area", "parentId": "c1", "anchorShape": None, "body": "Fixed in v2"}
+        c = dict(self.BASE, anchorShape={"kind": "box", "x1": 1, "y1": 2, "x2": 30, "y2": 40, "designWidth": 1280},
+                 replies=[reply])
+        self.assertEqual(self._print(c),
+                         "  [area] Ann (2026-11-20) [c1]\n"
+                         "    #3 box (1,2)–(30,40) on v1: Logo is too small\n"
+                         "      ↳ Bo (2026-11-20) [c9]\n"
+                         "        Fixed in v2\n\n")
+
     def test_area_without_shape_prints_body(self):
         out = self._print(dict(self.BASE))
         self.assertIn("    Logo is too small\n", out)
