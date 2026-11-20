@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="signum:design-width" content="1280">
+<title>Login</title>
+<style>
+  body { width: 1280px; margin: 0; font-family: system-ui, sans-serif; background: #f2f2f2; color: #333; }
+  header { height: 64px; padding: 0 32px; display: flex; align-items: center; background: #ddd; }
+  .logo { width: 120px; height: 32px; background: #bbb; }
+  main { display: flex; justify-content: center; padding: 96px 0; }
+  .card { width: 400px; padding: 32px; background: #fff; border: 1px solid #ccc; }
+  h1 { margin: 0 0 24px; font-size: 24px; }
+  label { display: block; margin: 16px 0 6px; font-size: 14px; }
+  .field { height: 40px; border: 1px solid #aaa; background: #fafafa; }
+  .button { display: block; margin-top: 24px; padding: 12px; text-align: center; background: #555; color: #fff; text-decoration: none; }
+  .small { display: block; margin-top: 16px; font-size: 14px; color: #555; }
+</style>
+</head>
+<body>
+<header><div class="logo" title="[LOGO]"></div></header>
+<main>
+  <div class="card">
+    <h1>Sign in</h1>
+    <label>Email</label>
+    <div class="field"></div>
+    <label>Password</label>
+    <div class="field"></div>
+    <!-- An <a> styled as a button: links between mockups are the only clicks Signum follows. -->
+    <a class="button" href="dashboard.html">Sign in</a>
+    <!-- Not drawn yet: shows as a broken link until mockups/forgot-password.html exists. -->
+    <a class="small" href="forgot-password.html">Forgot password?</a>
+  </div>
+</main>
+</body>
+</html>

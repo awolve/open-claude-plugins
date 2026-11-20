@@ -21,6 +21,8 @@ If you're going to spec it, spec it properly. There is one spec format with thre
 
 These are the only spec document names. Other files in the folder are supporting material (diagrams, schemas) — only valid if referenced by one of the three.
 
+Visual mockups and wireframes are documents too: static HTML pages under `mockups/` (`mockups/login.html`), with versions, status and comments of their own. The `mockup` skill covers how to write and register them.
+
 ### Commands — spec creation
 
 | Command | What it does |
