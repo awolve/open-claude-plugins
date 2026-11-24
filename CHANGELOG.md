@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.69.0 — 2026-11-24 — Björn Allvin
+
+- **Visual mockups**, for services with the mockup document type (Signum 0.185.0 on). A mockup is a single HTML file kept as `mockups/<name>.html` in a feature folder, with its sync header in an HTML comment. `create-doc` accepts `mockups/<name>.html`; pull, push and the edit hook include mockups and never push other HTML.
+- **`comments` shows area comments** on a mockup as `#N box (x1,y1)–(x2,y2) on vN` (or an arrow), with their replies under them.
+- **New skill `mockup`**: how to write a mockup for Signum, link mockups to each other, and read the comments on them. The `spec` skill points to it.
+
 ## 0.68.0 — 2026-11-15 — Mattias Aspelund
 
 - **`log` shows an operation that changed many records as one line**, for services that log every record a cascade changes (Signum 0.182.0 on). A feature rename moving its documents and items, or a tag delete untagging items, is the operation's own line with `(+N changes)`, and the first five records under it. When the operation's own event isn't in the list, the line names the cause ("2 items untagged when tag 'Legacy' was deleted"). `--json` is unchanged: every event, as the service returns it. Older services and older events show as before.
